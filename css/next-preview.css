@@ -1,0 +1,30 @@
+.shiki-shell-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.next-preview-badge { margin: 0; padding: 10px 18px; background: #edf4ef; color: #4b6655; font: 12px/1.5 system-ui; }
+.next-page { position: fixed; inset: 0; z-index: 26000; background: var(--primary-bg, #fff); color: var(--text-primary, #171c19); display: flex; flex-direction: column; height: 100dvh; }
+.next-page[hidden], .next-page [hidden] { display: none !important; }
+.next-page-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid var(--border-color, #eee); }
+.next-page-header h2 { font: 600 17px/1.4 system-ui; margin: 0; }
+.next-page-body { overflow-y: auto; overscroll-behavior: contain; padding: 20px 20px calc(24px + env(safe-area-inset-bottom)); }
+.next-button { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; padding: 10px 16px; margin: 4px; background: #edf4ef; color: #284c35; border: 1px solid #cbdacf; border-radius: 12px; font: 500 14px/1.5 system-ui; cursor: pointer; }
+.next-button:disabled { opacity: .55; cursor: default; }
+.next-field { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 20px; font: 500 14px/1.5 system-ui; }
+.next-field input:not([type=checkbox]), .next-field textarea, .next-field select { box-sizing: border-box; width: 100%; min-height: 44px; border: 1px solid var(--border-color, #d9dfdb); border-radius: 10px; padding: 12px; background: var(--secondary-bg, #f7f8f7); color: inherit; font: 16px/1.6 system-ui; }
+.next-field textarea { min-height: 190px; resize: vertical; }
+.next-field input[type=checkbox] { align-self: flex-start; width: 24px; height: 24px; }
+.next-note, .next-empty { color: var(--text-secondary, #67706a); font: 13px/1.7 system-ui; }
+.next-friend-row { width: 100%; display: flex; align-items: center; gap: 14px; border: none; padding: 14px 20px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.next-avatar { flex: 0 0 48px; width: 48px; height: 48px; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; background: #e0ebe3; color: #55715e; font: 30px system-ui; }
+.next-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.next-row-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 5px; overflow-wrap: anywhere; }
+.next-row-copy strong { font: 600 16px system-ui; }.next-row-copy small { color: var(--text-secondary, #777); }
+.next-member-choice { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border-color, #eee); }
+.next-member-choice input { width: 22px; height: 22px; flex-shrink: 0; accent-color: #628b70; }
+.next-settings-heading { padding: 12px 0; }
+[data-view=friends] > .next-field { padding: 0 20px; }
+[data-view=settings].shiki-shell-view { padding: 20px; }
+[data-view=settings] > .next-button { display: flex; width: calc(100% - 8px); justify-content: flex-start; margin-bottom: 12px; }
+#next-avatar-preview { width: 80px; height: 80px; }
+body .notification { z-index: 30000; }
+/* Old global role/profile editors cannot change the canonical friend model. */
+#session-manager-modal, #group-chat-modal { display: none !important; }
+@media (max-width: 440px) { .next-page-header { gap: 8px; } .next-page-header h2 { font-size: 16px; } .next-page-body { padding-left: 16px; padding-right: 16px; } }

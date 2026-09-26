@@ -1,0 +1,255 @@
+/* ============================================================
+   Shiki Message - Photo Album UI
+   ============================================================ */
+
+.photo-album-entry {
+    cursor: pointer;
+}
+
+.photo-album-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.68);
+    backdrop-filter: blur(8px);
+}
+
+.photo-album-overlay.active {
+    display: flex;
+}
+
+.photo-album-panel {
+    width: min(980px, 96vw);
+    max-height: 92vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 18px;
+    background: var(--bg-color, #171717);
+    color: var(--text-color, #f5f5f5);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.photo-album-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.photo-album-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 650;
+}
+
+.photo-album-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.photo-album-btn {
+    border: none;
+    border-radius: 10px;
+    padding: 9px 14px;
+    cursor: pointer;
+    font-size: 14px;
+    background: rgba(255, 255, 255, 0.10);
+    color: inherit;
+}
+
+.photo-album-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.photo-album-close {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    font-size: 22px;
+}
+
+.photo-album-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    overflow-x: auto;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.photo-album-filter {
+    flex: 0 0 auto;
+    border: none;
+    border-radius: 999px;
+    padding: 7px 12px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.08);
+    color: inherit;
+    font-size: 13px;
+}
+
+.photo-album-filter.active {
+    background: rgba(255, 255, 255, 0.20);
+}
+
+.photo-album-body {
+    overflow-y: auto;
+    padding: 18px 20px 24px;
+}
+
+.photo-album-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.photo-album-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.055);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.photo-album-thumb-wrap {
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    background: #111;
+    cursor: zoom-in;
+}
+
+.photo-album-thumb {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.photo-album-meta {
+    padding: 10px 11px 11px;
+}
+
+.photo-album-owner {
+    font-size: 14px;
+    font-weight: 650;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.photo-album-sub {
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.64;
+}
+
+.photo-album-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 31px;
+    height: 31px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    opacity: 0;
+    transition: opacity .15s ease;
+}
+
+.photo-album-card:hover .photo-album-delete {
+    opacity: 1;
+}
+
+.photo-album-empty {
+    padding: 54px 20px;
+    text-align: center;
+    opacity: 0.62;
+}
+
+.photo-album-viewer {
+    position: fixed;
+    inset: 0;
+    z-index: 100001;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0, 0, 0, 0.88);
+}
+
+.photo-album-viewer.active {
+    display: flex;
+}
+
+.photo-album-viewer img {
+    max-width: 95vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.photo-album-viewer-close {
+    position: fixed;
+    top: 18px;
+    right: 18px;
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.13);
+    color: #fff;
+    font-size: 26px;
+}
+
+.photo-album-hidden-input {
+    display: none !important;
+}
+
+@media (max-width: 600px) {
+    .photo-album-overlay {
+        padding: 0;
+    }
+
+    .photo-album-panel {
+        width: 100vw;
+        height: 100vh;
+        max-height: 100vh;
+        border-radius: 0;
+    }
+
+    .photo-album-header {
+        padding: 14px;
+    }
+
+    .photo-album-toolbar {
+        padding: 10px 14px;
+    }
+
+    .photo-album-body {
+        padding: 12px 14px 20px;
+    }
+
+    .photo-album-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .photo-album-delete {
+        opacity: 1;
+    }
+}

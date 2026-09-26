@@ -1,0 +1,47 @@
+.shiki-watch-subtitles {
+    margin: 0 14px 12px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 9px;
+    border-radius: 12px;
+    background: var(--shell-surface);
+    color: var(--shell-text);
+    font-size: 13px;
+}
+.shiki-watch-subtitle-picker {
+    position: relative;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: #829889;
+    color: #fff;
+    cursor: pointer;
+    text-align: center;
+}
+.shiki-watch-subtitle-picker input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+}
+.shiki-watch-subtitle-picker:focus-within { outline: 2px solid var(--shell-accent); outline-offset: 2px; }
+.shiki-watch-subtitle-switch { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.shiki-watch-subtitle-switch input { accent-color: #829889; }
+.shiki-watch-subtitles select {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid var(--shell-border);
+    border-radius: 9px;
+    background: var(--shell-surface);
+    color: var(--shell-text);
+    font: inherit;
+}
+.shiki-watch-subtitle-name { grid-column: 1 / -1; overflow-wrap: anywhere; color: var(--shell-secondary); }
+.shiki-watch-local-error { grid-column: 1 / -1; color: #a32f2f; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+    .shiki-watch-subtitles { margin-left: 10px; margin-right: 10px; grid-template-columns: 1fr; }
+    .shiki-watch-subtitle-switch { justify-content: center; min-height: 36px; }
+}

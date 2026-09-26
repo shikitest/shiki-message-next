@@ -1,0 +1,25 @@
+{
+  "name": "传讯 Next · 好友预览",
+  "short_name": "传讯 Next",
+  "id": "./",
+  "description": "本地优先的聊天模拟应用",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#829889",
+  "icons": [
+    {
+      "src": "assets/app-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/app-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
