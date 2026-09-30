@@ -309,6 +309,10 @@ function deduplicateContentArray(arr, baseSystemArray = []) {
         };
 
         const throttledSaveData = (afterSave, sessionIdOverride) => {
+            // The original reply-library editor writes the current conversation's
+            // customReplies array. In the friend model, cards belong to a fixed
+            // friend ID, so persist that owner as well before the session throttle.
+            if (window.NextRuntime && window.NextRuntime.saveEditorCards) window.NextRuntime.saveEditorCards().catch(function () {});
             const capturedSessionId = String(sessionIdOverride || SESSION_ID || '');
             if (!capturedSessionId) {
                 console.warn('[throttledSaveData] session id 不可用，已跳过保存');

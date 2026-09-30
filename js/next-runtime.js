@@ -2,7 +2,10 @@
 (function (global) {
     'use strict';
     const GLOBAL_KEY = 'SHIKI_NEXT_globalSettingsV1';
+    // Keep legacy global fields in storage for compatibility, but only profile fields
+    // may be projected into a chat. Chat appearance stays on its own session settings.
     const GLOBAL_FIELDS = ['myName', 'myStatus', 'myAvatar', 'isDarkMode', 'colorTheme', 'fontSize', 'messageFontFamily', 'messageFontWeight', 'messageLineHeight', 'customFontUrl', 'soundEnabled', 'soundVolume', 'musicPlayerEnabled', 'customGlobalCss', 'timeFormat', 'myAvatarShape', 'myAvatarFrame'];
+    const PROFILE_FIELDS = ['myName', 'myStatus', 'myAvatar'];
     let globalSettings = {};
     let draftTimer = null;
     const replyTimers = new Set();
@@ -20,8 +23,14 @@
     const userReplyTimers = new Set();
     const fontStack = '-apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif';
     const originalReplyDefaults = getDefaultSettings();
+    const conversationReplyKeys = ['allowReadNoReply', 'readNoReplyChance', 'replyDelayMin', 'replyDelayMax', 'textGenerationMode', 'typingIndicatorEnabled', 'readReceiptsEnabled', 'replyEnabled'];
+    let cardEditor = null;
+    let cardSave = Promise.resolve();
     function sessions() {
-        return NextModel.snapshot().conversations.map(c => ({ ...c, name: c.type === 'direct' ? (NextModel.friend(c.friendIds[0]) || {}).name || c.name : c.name }));
+        return NextModel.snapshot().conversations.map(c => {
+            const friend = c.type === 'direct' ? NextModel.friend(c.friendIds[0]) : null;
+            return { ...c, name: friend ? (friend.remark || friend.name || c.name) : c.name };
+        });
     }
     async function sync() {
         sessionList = sessions();
@@ -32,17 +41,16 @@
         }
     }
     function applyCurrent() {
-        Object.assign(settings, globalSettings);
+        PROFILE_FIELDS.forEach(key => { if (Object.prototype.hasOwnProperty.call(globalSettings, key)) settings[key] = globalSettings[key]; });
         settings.autoSendEnabled = false;
         partnerPersonas = [];
         const c = NextModel.conversation(SESSION_ID);
         const all = c ? NextModel.members(c.id) : [];
-        if (c && c.type === 'direct' && all[0]) Object.assign(settings, NextModel.preferences(replyPreferences(all[0])));
         settings.autoSendEnabled = false;
-        groupChatSettings = { enabled: c && c.type === 'group', showAvatar: true, showName: true, members: all.map(f => ({ id: f.id, name: f.name, avatar: f.avatar, deleted: f.deleted })) };
+        groupChatSettings = { enabled: c && c.type === 'group', showAvatar: true, showName: true, members: all.map(f => ({ id: f.id, name: f.remark || f.name, avatar: f.avatar, deleted: f.deleted })) };
         _activeGroupSessionId = null;
         _activeGroupSessionScoped = false;
-        settings.partnerName = c ? (c.type === 'group' ? c.name : all[0].name + (all[0].deleted ? '（已删除）' : '')) : '请选择好友';
+        settings.partnerName = c ? (c.type === 'group' ? c.name : (all[0].remark || all[0].name) + (all[0].deleted ? '（已删除）' : '')) : '请选择好友';
         settings.partnerStatus = c && c.type === 'direct' && global.NextMood ? NextMood.status(all[0].id) : '';
         customReplies = c && c.type === 'direct' && all[0] ? all[0].cards.slice() : [];
         if (DOMElements.partner && DOMElements.partner.avatar) {
@@ -66,8 +74,15 @@
     }
     async function saveGlobals(input) {
         const next = pickGlobal(input);
-        await localforage.setItem(GLOBAL_KEY, next);
-        globalSettings = next;
+        const merged = { ...globalSettings, ...next };
+        await localforage.setItem(GLOBAL_KEY, merged);
+        globalSettings = merged;
+        applyOuterAppearance();
+    }
+    function applyOuterAppearance() {
+        const html = document.documentElement;
+        html.dataset.nextOuterTheme = ['gold', 'green'].includes(globalSettings.colorTheme) ? globalSettings.colorTheme : 'black-white';
+        html.dataset.nextOuterDark = globalSettings.isDarkMode ? 'true' : 'false';
     }
     async function saveDraft(targetId, draftValue) {
         clearTimeout(draftTimer);
@@ -78,16 +93,16 @@
     async function boot() {
         globalSettings = await localforage.getItem(GLOBAL_KEY) || {};
         if (!Object.keys(globalSettings).length) {
-            globalSettings = { ...pickGlobal(settings), colorTheme: 'black-white', messageFontFamily: fontStack };
+            globalSettings = {
+                myName: settings.myName || '我',
+                myStatus: settings.myStatus || '',
+                myAvatar: settings.myAvatar || null,
+                colorTheme: 'black-white',
+                isDarkMode: false
+            };
             await saveGlobals(globalSettings);
         }
-        for (const f of NextModel.snapshot().friends) {
-            if (Object.keys(f.replySettings || {}).length) continue;
-            const direct = NextModel.snapshot().conversations.find(c => c.type === 'direct' && c.friendIds[0] === f.id);
-            if (!direct) continue;
-            const legacy = await localforage.getItem(getSessionStorageKey(direct.id, 'chatSettings'));
-            if (legacy) await NextModel.saveFriend({ id: f.id, replySettings: NextModel.preferences(legacy) });
-        }
+        applyOuterAppearance();
         await sync(); applyCurrent();
         const input = document.getElementById('message-input');
         if (input) {
@@ -110,6 +125,8 @@
     async function flush() {
         const id = String(SESSION_ID || ''), version = switchGeneration;
         const input = document.getElementById('message-input'), draft = input ? input.value : '';
+        await saveEditorCards();
+        await cardSave;
         await NextModel.flush(); await saveDraft(id, draft);
         if (global.NextMood) await NextMood.flush();
         if (id !== String(SESSION_ID || '') || version !== switchGeneration) return;
@@ -163,6 +180,9 @@
                     if (global.MessageSearch) MessageSearch.close();
                     if (global.MessageDateSearch) MessageDateSearch.close();
                     const loaded = await loadData();
+                    // A newer tap may have arrived while this conversation was loading.
+                    // Ignore the stale result and continue with only the latest request.
+                    if (version !== switchGeneration) continue;
                     if (!loaded) throw new Error('聊天读取失败，已恢复原页面，请重试');
                 }
                 const draft = await localforage.getItem(getSessionStorageKey(id, 'draft')) || '';
@@ -193,8 +213,45 @@
         }
     }
     function replyPreferences(f) {
-        return { ...originalReplyDefaults, ...f.replySettings };
+        const scoped = {};
+        conversationReplyKeys.forEach(key => { if (Object.prototype.hasOwnProperty.call(settings, key)) scoped[key] = settings[key]; });
+        return { ...originalReplyDefaults, ...scoped };
     }
+    async function beginCardEditor(friendId) {
+        const owner = NextModel.friend(friendId);
+        const conversation = NextModel.conversation(SESSION_ID);
+        if (!owner || owner.deleted || !conversation || !conversation.friendIds.includes(friendId)) throw new Error('无法编辑该好友的字卡');
+        await cardSave.catch(() => {});
+        cardEditor = { friendId, sessionId: String(SESSION_ID), disabledCards: (owner.disabledCards || []).slice(),
+            lastSaved: JSON.stringify({ cards: owner.cards, groups: owner.cardGroups || [], disabled: owner.disabledCards || [] }) };
+        customReplies = owner.cards.slice();
+        global.customReplyGroups = (owner.cardGroups || []).map(group => ({ ...group, items: group.items.slice() }));
+        return owner;
+    }
+    function cardEditorOwnerId() { return cardEditor && cardEditor.sessionId === String(SESSION_ID) ? cardEditor.friendId : null; }
+    function editorDisabledCards() { return new Set(cardEditor ? cardEditor.disabledCards : []); }
+    function setEditorDisabledCards(values) {
+        if (!cardEditorOwnerId()) return;
+        cardEditor.disabledCards = [...values];
+        saveEditorCards().catch(() => {});
+    }
+    function saveEditorCards() {
+        const owner = cardEditor;
+        if (!owner || owner.sessionId !== String(SESSION_ID)) return cardSave;
+        const cards = customReplies.slice();
+        const groups = Array.isArray(global.customReplyGroups) ? global.customReplyGroups.map(group => ({ name: group.name, items: (group.items || []).slice(), disabled: group.disabled === true })) : [];
+        const disabledCards = owner.disabledCards.filter(card => cards.includes(card));
+        const serialized = JSON.stringify({ cards, groups, disabled: disabledCards });
+        if (serialized === owner.lastSaved) return cardSave;
+        owner.lastSaved = serialized;
+        cardSave = cardSave.catch(() => {}).then(async () => {
+            const current = NextModel.friend(owner.friendId);
+            if (!current || current.deleted) throw new Error('好友不存在，字卡未保存');
+            await NextModel.saveFriend({ id: owner.friendId, cards, cardGroups: groups, disabledCards });
+        }).catch(error => { owner.lastSaved = ''; report(error); throw error; });
+        return cardSave;
+    }
+    function endCardEditor() { cardEditor = null; }
     function userSent() {
         const id = String(SESSION_ID), version = switchGeneration;
         userReplyTimers.forEach(clearTimeout); userReplyTimers.clear();
@@ -208,7 +265,9 @@
         for (const f of NextModel.members(id)) {
             if (f.deleted) continue;
             const p = replyPreferences(f);
-            if ((p.allowReadNoReply && Math.random() < p.readNoReplyChance) || (p.usePreviewProbability && Math.random() >= f.replyProbability)) continue;
+            // Keep the legacy read/no-reply rule; preview-only replyProbability
+            // is retained in stored data for compatibility but never gates replies.
+            if (p.allowReadNoReply && Math.random() < p.readNoReplyChance) continue;
             const timer = setTimeout(() => {
                 userReplyTimers.delete(timer);
                 if (id === String(SESSION_ID) && version === switchGeneration && !document.hidden) reply({ friendId: f.id, probabilityChecked: true });
@@ -223,7 +282,7 @@
         for (const f of NextModel.members(id)) {
             const prefs = replyPreferences(f);
             if (f.deleted || (trigger && trigger.friendId && trigger.friendId !== f.id)) continue;
-            if (!(trigger && trigger.probabilityChecked) && ((prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) || (prefs.usePreviewProbability && Math.random() >= f.replyProbability))) continue;
+            if (!(trigger && trigger.probabilityChecked) && prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) continue;
             const valid = () => String(SESSION_ID) === id && switchGeneration === version && !document.hidden && NextModel.friend(f.id) && !NextModel.friend(f.id).deleted && NextModel.conversation(id) && NextModel.conversation(id).friendIds.includes(f.id);
             if (Math.random() < 0.03 && valid() && typeof global._triggerPartnerPoke === 'function') global._triggerPartnerPoke({ id: f.id, name: f.name, avatar: f.avatar });
             if (Math.random() < 0.01 && global.PhotoAlbum && typeof PhotoAlbum.generateRandomPhotoForOwner === 'function') {
@@ -242,7 +301,9 @@
                 if (i === count - 1) { typingFriends.delete(f.id); refreshTyping(); }
                 const current = NextModel.friend(f.id); const conversation = NextModel.conversation(id);
                 if (!valid() || !current || !conversation) return;
-                const choice = chooseReplyText(current.cards, prefs);
+                const disabled = new Set(current.disabledCards || []);
+                (current.cardGroups || []).forEach(group => { if (group.disabled) group.items.forEach(card => disabled.add(card)); });
+                const choice = chooseReplyText(current.cards.filter(card => !disabled.has(card)), prefs);
                 if (!choice.text) return;
                 let finalText = choice.text, separateEmoji = null;
                 if (typeof customEmojis !== 'undefined' && customEmojis.length && Math.random() < 0.2) {
@@ -250,7 +311,7 @@
                     if (settings.emojiMixEnabled !== false) finalText = Math.random() < 0.5 ? emoji + ' ' + finalText : finalText + ' ' + emoji;
                     else separateEmoji = emoji;
                 }
-                const message = { id: crypto.randomUUID(), sender: current.name, friendId: current.id,
+                const message = { id: crypto.randomUUID(), sender: current.remark || current.name, friendId: current.id,
                     groupMemberId: c.type === 'group' ? current.id : null, text: finalText,
                     timestamp: new Date(), status: 'received', type: 'normal', favorited: false, note: null };
                 if (prefs.replyEnabled && i === 0) {
@@ -276,5 +337,5 @@
             }
         }
     }
-    global.NextRuntime = Object.freeze({ GLOBAL_KEY, GLOBAL_FIELDS, boot, sync, sessions, applyCurrent, saveGlobals, flush, open, reply, userSent, replyPreferences, cancelReplies, report, generation: () => switchGeneration, globals: () => ({ ...globalSettings }) });
+    global.NextRuntime = Object.freeze({ GLOBAL_KEY, GLOBAL_FIELDS, boot, sync, sessions, applyCurrent, applyOuterAppearance, saveGlobals, flush, open, reply, userSent, replyPreferences, beginCardEditor, saveEditorCards, endCardEditor, cardEditorOwnerId, editorDisabledCards, setEditorDisabledCards, cancelReplies, report, generation: () => switchGeneration, globals: () => ({ ...globalSettings }) });
 })(window);

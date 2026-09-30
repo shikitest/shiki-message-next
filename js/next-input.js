@@ -103,6 +103,11 @@
         document.getElementById('attachment-btn').replaceChildren(ShikiAppShell.createIcon('photo'));
         document.getElementById('send-btn').replaceChildren(ShikiAppShell.createIcon('send'));
         const picker = document.getElementById('user-sticker-picker'); document.querySelector('.input-area-wrapper').append(picker);
+        const replyLibraryShortcut = document.getElementById('next-reply-library-shortcut');
+        if (replyLibraryShortcut) replyLibraryShortcut.addEventListener('click', event => {
+            event.stopPropagation();
+            if (global.NextUI) global.NextUI.openReplyLibraryForCurrent();
+        });
         combo.setAttribute('aria-label', '表情与贴图');
         document.getElementById('attachment-btn').setAttribute('aria-label', '发送图片');
         document.getElementById('send-btn').setAttribute('aria-label', '发送消息');

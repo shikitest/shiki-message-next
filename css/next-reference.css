@@ -10,10 +10,58 @@
     --next-keyboard-lift: 0px;
     --next-compose-height: 58px;
 }
+
+/* Stable chat canvas: the background belongs to the viewport, not the scrolling
+   message layer, so overscroll and short histories cannot uncover page white. */
+body.shiki-chat-view-active { overflow: hidden; background: var(--next-ref-chat-bg); }
+body.shiki-chat-view-active .main-chat-area {
+    position: fixed;
+    z-index: 10;
+    top: calc(var(--next-ref-toolbar) + env(safe-area-inset-top));
+    right: 0;
+    bottom: 0;
+    left: 0;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: var(--next-ref-chat-bg);
+    isolation: isolate;
+}
+body.shiki-chat-view-active .main-chat-area::before {
+    content: "";
+    position: fixed;
+    z-index: -1;
+    inset: calc(var(--next-ref-toolbar) + env(safe-area-inset-top)) 0 0;
+    background-color: var(--next-ref-chat-bg);
+    background-image: var(--chat-bg-image, none);
+    background-position: center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    pointer-events: none;
+}
+body.shiki-chat-view-active #chat-container {
+    min-height: 0;
+    overscroll-behavior-y: contain;
+    background: transparent !important;
+    padding-bottom: calc(var(--next-compose-height) + env(safe-area-inset-bottom) + 12px);
+}
+body.shiki-chat-view-active .input-area-wrapper {
+    z-index: 50;
+    transition: bottom 160ms ease-out;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+body.shiki-chat-view-active .input-area-wrapper,
+body.shiki-chat-view-active .input-area-wrapper .input-area,
+body.shiki-chat-view-active .input-area-wrapper #next-input-tools,
+body.shiki-chat-view-active .input-area-wrapper #user-sticker-picker { background-color: #fff; }
+@media (prefers-reduced-motion: reduce) {
+    body.shiki-chat-view-active .input-area-wrapper { transition: none; }
+}
 .next-page *, .shiki-record-page * { box-sizing: border-box; }
 .next-page [hidden], .shiki-record-page [hidden], .next-section-list[hidden], #next-friend-list[hidden] { display: none !important; }
 .next-services-grid { grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); max-width: 100%; }
 .next-services-grid .next-service { max-width: 96px; }
+.next-page:not([hidden]) { animation: next-secondary-enter 170ms cubic-bezier(.2,.7,.2,1) both; }
 .next-page-header { display: grid; grid-template-columns: 60px minmax(0, 1fr) 60px; min-height: calc(var(--next-ref-toolbar) + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 8px 0; border: 0; }
 .next-page-header h2 { margin: 0; text-align: center; font-size: 17px; }
 .next-page-header > button { justify-self: start; height: 44px; font-size: 16px; }
@@ -85,6 +133,8 @@ body.shiki-chat-view-active { --message-sent-bg: var(--next-ref-bubble); --messa
 .shiki-chat-view-active .combo-tabs-header { background: #fff; border: 0; padding: 8px 12px; }
 .shiki-chat-view-active .combo-tab-btn { color: #666; background: #fff; border: 0; border-radius: 8px; box-shadow: none; font-size: 12px; }
 .shiki-chat-view-active .combo-tab-btn.active { background: #ededed; color: #111; }
+#next-reply-library-shortcut { display: inline-flex; align-items: center; gap: 5px; padding: 5px 7px; color: #333; background: transparent; border: 0; border-radius: 6px; font: 500 12px var(--next-ui-font); white-space: nowrap; }
+#next-reply-library-shortcut:focus-visible { outline: 2px solid #666; outline-offset: 1px; }
 .shiki-chat-view-active #combo-content-area { min-height: 0; overflow-y: auto; background: #fff; }
 .shiki-chat-view-active #reply-preview-container { padding: 0; }
 .next-reply-preview { display: flex; width: 100%; align-items: center; gap: 9px; padding: 10px 16px 8px; border-bottom: 1px solid #eee; background: #fff; }
@@ -163,9 +213,9 @@ body .photo-album-btn { background: #fff; color: #111; border-radius: 0; }
 body .photo-album-toolbar { background: #fff; border: 0; padding: 8px 16px; }
 body .photo-album-filter { color: #888; background: #fff; border: 1px solid #eee; }
 body .photo-album-filter.active { background: #111; color: #fff; }
-body .photo-album-body { padding: 8px 0 16px; }
-body .photo-album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; }
-body .photo-album-card { border-radius: 0; border: 0; background: #fff; }
+body .photo-album-body { padding: 12px 16px 20px; }
+body .photo-album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: 760px; margin-inline: auto; }
+body .photo-album-card { border-radius: 7px; border: 0; background: #fff; overflow: hidden; }
 body .photo-album-card img { aspect-ratio: 1; object-fit: cover; }
 body .photo-album-empty { color: #999; font-size: 14px; }
 @media (prefers-reduced-motion: no-preference) {
@@ -173,3 +223,56 @@ body .photo-album-empty { color: #999; font-size: 14px; }
     @keyframes next-reference-enter { from { opacity: .65; transform: translateX(10px); } to { opacity: 1; transform: none; } }
 }
 @media (prefers-reduced-motion: reduce) { .shiki-chat-view-active #chat-container { animation: none; } }
+
+/* Final viewport/composer overrides: keep the wallpaper independent from the
+   scroll layer and reserve the fixed composer space without changing scrolling. */
+body.shiki-chat-view-active { overflow: hidden; background: var(--next-ref-chat-bg); }
+body.shiki-chat-view-active .main-chat-area {
+    position: fixed; z-index: 10; top: calc(var(--next-ref-toolbar) + env(safe-area-inset-top));
+    right: 0; bottom: 0; left: 0; min-height: 0; padding: 0; overflow: hidden;
+    background-color: var(--next-ref-chat-bg); isolation: isolate;
+}
+body.shiki-chat-view-active .main-chat-area::before {
+    content: ""; position: fixed; z-index: -1;
+    inset: calc(var(--next-ref-toolbar) + env(safe-area-inset-top)) 0 0;
+    background-color: var(--next-ref-chat-bg); background-image: var(--chat-bg-image, none);
+    background-position: center; background-repeat: no-repeat; background-size: cover; pointer-events: none;
+}
+body.shiki-chat-view-active #chat-container {
+    min-height: 0; overscroll-behavior-y: contain; background: transparent !important;
+    padding-bottom: calc(var(--next-compose-height) + env(safe-area-inset-bottom) + 14px);
+}
+body.shiki-chat-view-active .input-area-wrapper {
+    z-index: 50; transition: bottom 160ms ease-out; padding-bottom: env(safe-area-inset-bottom);
+    background-color: #fff;
+}
+body.shiki-chat-view-active .input-area-wrapper .input-area,
+body.shiki-chat-view-active .input-area-wrapper #next-input-tools,
+body.shiki-chat-view-active .input-area-wrapper #user-sticker-picker { background-color: #fff; }
+.shiki-shell-view { opacity: 1; transform: none; }
+.shiki-shell-view.is-entering { animation: next-primary-enter 150ms ease-out both; }
+.shiki-record-page:not([hidden]), .next-page:not([hidden]) { animation: next-secondary-enter 170ms cubic-bezier(.2,.7,.2,1) both; }
+.shiki-chat-topbar button, .shiki-shell-nav button, .next-page button, .shiki-record-page button {
+    -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+}
+.shiki-app-shell button, .next-page button, .shiki-chat-topbar button,
+#settings-modal button, #chat-modal button, #advanced-modal button, #appearance-modal button, #data-modal button,
+.settings-card, .cs-tab, [data-action], [data-detail-action], [data-next-action] { -webkit-tap-highlight-color: transparent; }
+.shiki-chat-topbar button:active, .shiki-shell-nav button:active, .next-page button:active, .shiki-record-page button:active { opacity: .72; }
+.shiki-chat-topbar button:focus-visible, .shiki-shell-nav button:focus-visible, .next-page button:focus-visible, .shiki-record-page button:focus-visible { outline: 2px solid currentColor; outline-offset: -3px; }
+.cs-inline-action { min-height: 42px; margin: 8px 0 2px; padding: 0 16px; border: 1px solid var(--border-color, #dedede); border-radius: 10px; background: var(--primary-bg, #fff); color: var(--text-primary, #222); font: inherit; cursor: pointer; }
+.cs-inline-action:active { opacity: .72; }
+.cs-inline-action:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@keyframes next-primary-enter { from { opacity: .45; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes next-secondary-enter { from { opacity: .5; transform: translateX(9px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) {
+    body.shiki-chat-view-active .input-area-wrapper { transition: none; }
+    .shiki-shell-view.is-entering, .shiki-record-page:not([hidden]), .next-page:not([hidden]) { animation: none; }
+}
+@media (hover: none) and (pointer: coarse) {
+    /* Avoid iOS compositor black flashes from translating whole view surfaces. */
+    .shiki-shell-view.is-entering, .next-page:not([hidden]), .shiki-record-page:not([hidden]) {
+        animation: next-touch-fade 130ms ease-out both;
+    }
+}
+@keyframes next-touch-fade { from { opacity: .55; } to { opacity: 1; } }

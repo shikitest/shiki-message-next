@@ -32,7 +32,7 @@
         { id: 'profile', title: '资料、翻译与聊天选项', icon: 'fa-user-pen', target: 'chat-settings', scope: 'conversation' },
         { id: 'sessions', title: '会话管理', icon: 'fa-comments', target: 'session-manager-btn', scope: 'global' },
         { id: 'group', title: '当前群聊设置', icon: 'fa-users', target: 'group-chat-btn', scope: 'conversation' },
-        { id: 'replies', title: '字卡与回复生成', icon: 'fa-message', target: 'custom-replies-function', scope: 'conversation' },
+        { id: 'replies', title: '自定义回复', icon: 'fa-message', target: 'custom-replies-function', scope: 'friend' },
         { id: 'ime', title: 'IME 自定义词典', icon: 'fa-keyboard', target: 'ime-custom-lexicon-function', scope: 'global' },
         { id: 'appearance', title: '主题、背景与外观', icon: 'fa-palette', target: 'appearance-settings', scope: 'conversation' },
         { id: 'data', title: '数据备份与恢复', icon: 'fa-database', target: 'data-settings', scope: 'global' },
@@ -77,6 +77,7 @@
         'chat-plus': ['M20 11.5a7.5 7.5 0 0 1-8 7.5 8.2 8.2 0 0 1-3.2-.6L4 20l1.4-3.6A7.2 7.2 0 0 1 4 12c0-4.1 3.6-7.5 8-7.5s8 3.1 8 7Z', 'M19 16v6', 'M16 19h6'],
         bookmark: ['M6 3h12v18l-6-4-6 4z'],
         bell: ['M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
+        newspaper: ['M4 4h15v16H4z', 'M19 8h2v10a2 2 0 0 1-2 2', 'M7 8h9', 'M7 12h9', 'M7 16h5'],
         'user-plus': ['M15 20v-1.5a4.5 4.5 0 0 0-4.5-4.5h-3A4.5 4.5 0 0 0 3 18.5V20', 'M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M19 8v6', 'M16 11h6'],
         user: ['M20 21v-1.5a6.5 6.5 0 0 0-6.5-6.5h-3A6.5 6.5 0 0 0 4 19.5V21', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z'],
         smile: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'M8 14s1.5 2 4 2 4-2 4-2', 'M9 9h.01', 'M15 9h.01'],
@@ -94,6 +95,26 @@
     };
 
     function svgIcon(name, filled) {
+        const icons = {
+            back: 'fa-solid fa-chevron-left', close: 'fa-solid fa-xmark', plus: 'fa-solid fa-plus',
+            camera: 'fa-solid fa-camera', send: 'fa-regular fa-paper-plane', menu: 'fa-solid fa-bars',
+            up: 'fa-solid fa-chevron-up', down: 'fa-solid fa-chevron-down', reply: 'fa-solid fa-reply',
+            star: 'fa-regular fa-star', trash: 'fa-regular fa-trash-can', 'list-check': 'fa-solid fa-list-check',
+            photo: 'fa-regular fa-image', calendar: 'fa-regular fa-calendar-days', 'chat-plus': 'fa-regular fa-comment-dots',
+            bookmark: 'fa-regular fa-bookmark', bell: 'fa-regular fa-bell', newspaper: 'fa-regular fa-newspaper',
+            'user-plus': 'fa-solid fa-user-plus', user: 'fa-regular fa-user', smile: 'fa-regular fa-face-smile',
+            brush: 'fa-solid fa-paintbrush', shield: 'fa-solid fa-shield-halved', gamepad: 'fa-solid fa-gamepad',
+            search: 'fa-solid fa-magnifying-glass', scan: 'fa-solid fa-expand', chevron: 'fa-solid fa-chevron-down',
+            home: 'fa-solid fa-house', chat: 'fa-regular fa-comment-dots', friends: 'fa-solid fa-user-group',
+            more: 'fa-solid fa-table-cells', settings: 'fa-solid fa-gear'
+        };
+        const icon = document.createElement('i');
+        icon.className = 'shiki-line-icon ' + (filled && name === 'chat' ? 'fa-solid fa-comment-dots' : (icons[name] || 'fa-solid fa-circle'));
+        icon.setAttribute('aria-hidden', 'true');
+        return icon;
+    }
+
+    function oldSvgIcon(name, filled) {
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         svg.setAttribute('viewBox', '0 0 24 24');
         svg.setAttribute('aria-hidden', 'true');
@@ -405,6 +426,7 @@
 
     function showPrimary(viewName) {
         if (global.NextRuntime && document.body.classList.contains('next-switching')) return;
+        if (global.NextRuntime && typeof global.NextRuntime.applyOuterAppearance === 'function') global.NextRuntime.applyOuterAppearance();
         if (global.NextUI) global.NextUI.beforeNavigate();
         if (!root) return;
         if (document.body.classList.contains('shiki-chat-view-active') && typeof global.saveDataForSession === 'function') {
@@ -420,7 +442,13 @@
         document.body.classList.remove('shiki-chat-view-active');
         setLegacyChatAvailable(false);
         root.querySelectorAll('.shiki-shell-view').forEach(function (view) {
-            view.hidden = view.dataset.view !== activeView;
+            const selected = view.dataset.view === activeView;
+            view.hidden = !selected;
+            view.classList.remove('is-entering');
+            if (selected) {
+                void view.offsetWidth;
+                requestAnimationFrame(function () { if (!view.hidden) view.classList.add('is-entering'); });
+            }
         });
         root.querySelectorAll('.shiki-shell-nav [data-view]').forEach(function (tab) {
             tab.classList.toggle('active', tab.dataset.view === activeView);

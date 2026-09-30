@@ -32,9 +32,13 @@
         for (const f of input.friends) {
             if (!f || typeof f.id !== 'string' || !/^[\w-]{1,80}$/.test(f.id) || ids.has(f.id) || !text(f.name, 40)) throw new Error('好友 ID 或名称无效');
             if (!Array.isArray(f.cards) || f.cards.length > 2000 || f.cards.some(c => typeof c !== 'string' || c.length > 2000)) throw new Error('字卡格式或长度无效');
+            if (f.disabledCards !== undefined && (!Array.isArray(f.disabledCards) || f.disabledCards.length > 2000 || f.disabledCards.some(c => typeof c !== 'string' || c.length > 2000))) throw new Error('屏蔽字卡格式无效');
+            if (f.cardGroups !== undefined && (!Array.isArray(f.cardGroups) || f.cardGroups.length > 200 || f.cardGroups.some(g => !g || typeof g.name !== 'string' || !Array.isArray(g.items) || g.items.some(c => typeof c !== 'string')))) throw new Error('字卡分组格式无效');
             ids.add(f.id);
             const avatar = typeof f.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(f.avatar) && f.avatar.length <= 250000 ? f.avatar : null;
-            clean.friends.push({ id: f.id, name: text(f.name, 40), avatar, cards: f.cards.map(c => text(c, 2000)).filter(Boolean), deleted: f.deleted === true,
+            clean.friends.push({ id: f.id, name: text(f.name, 40), remark: text(f.remark, 40), avatar, cards: f.cards.map(c => text(c, 2000)).filter(Boolean),
+                disabledCards: (f.disabledCards || []).map(c => text(c, 2000)).filter(Boolean),
+                cardGroups: (f.cardGroups || []).map(g => ({ name: text(g.name, 80), items: g.items.map(c => text(c, 2000)).filter(Boolean), disabled: g.disabled === true })), deleted: f.deleted === true,
                 replyProbability: Number.isFinite(f.replyProbability) ? Math.min(1, Math.max(0, f.replyProbability)) : 0.8,
                 replySettings: preferences(f.replySettings), createdAt: Number(f.createdAt) || Date.now() });
         }

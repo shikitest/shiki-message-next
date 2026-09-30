@@ -2,6 +2,7 @@
     'use strict';
     let root, page, busy = false, formAvatar = null, avatarVersion = 0, groupsExpanded = true, friendsExpanded = true;
     let groupSelection = new Set(), groupDraft = null;
+    let legacyPassThrough = null;
     const e = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
     function button(label, action, id) { const n = e('button', 'next-button', label); n.type = 'button'; n.dataset.nextAction = action; if (id) n.dataset.id = id; return n; }
     function avatar(src) { const n = e('span', 'next-avatar'); if (src) { const i = e('img'); i.src = src; i.alt = ''; n.append(i); } else n.append(ShikiAppShell.createIcon('user')); return n; }
@@ -40,12 +41,12 @@
         groups.forEach(c => {
             const row = e('button', 'next-group-row'); row.type = 'button'; row.dataset.action = 'open-session'; row.dataset.sessionId = c.id;
             const groupAvatar = e('span', 'next-group-avatar'); groupAvatar.append(ShikiAppShell.createIcon('friends'));
-            const copy = e('span', 'next-row-copy'); copy.append(e('strong', '', c.name), e('small', '', '[' + c.friendIds.length + '位成员]'));
+            const copy = e('span', 'next-row-copy'); copy.append(e('strong', '', c.name), e('small', '', c.friendIds.map(id => { const f = NextModel.friend(id); return f && (f.remark || f.name); }).filter(Boolean).join('、')));
             row.append(groupAvatar, copy, e('span', 'next-row-chevron', '›')); groupList.append(row);
         });
         friends.forEach(f => {
             const row = button('', 'friend', f.id); row.className = 'next-friend-row';
-            const copy = e('span', 'next-row-copy'); copy.append(e('strong', '', f.name), e('small', '', NextMood.status(f.id)));
+            const copy = e('span', 'next-row-copy'); copy.append(e('strong', '', f.remark || f.name), e('small', '', NextMood.status(f.id)));
             row.append(avatar(f.avatar), copy, e('span', 'next-row-chevron', '›')); list.append(row);
         });
         if (!friends.length && !query) {
@@ -59,13 +60,45 @@
         if (friendsToggle) { friendsToggle.setAttribute('aria-expanded', String(friendsExpanded)); friendsToggle.classList.toggle('is-collapsed', !friendsExpanded); }
         groupList.hidden = !groupsExpanded; list.hidden = !friendsExpanded;
     }
+    function prepareLegacySettingSurfaces() {
+        const gallery = document.getElementById('gallery-banner-entry'); if (gallery) gallery.remove();
+        const avatarPanel = document.getElementById('appearance-panel-avatar');
+        if (avatarPanel) {
+            avatarPanel.querySelectorAll('.settings-section').forEach(section => { if (section.querySelector('.frame-settings-container')) section.remove(); });
+            document.querySelectorAll('#appearance-nav-grid [onclick*="showAppearancePanel(\'avatar\')"]').forEach(node => node.remove());
+        }
+        const keepalive = document.getElementById('keepalive-audio-toggle');
+        if (keepalive) {
+            const card = keepalive.closest('.cs-card');
+            const heading = card && card.previousElementSibling;
+            if (card) card.remove();
+            if (heading && heading.classList.contains('cs-group-label') && /保活/.test(heading.textContent)) heading.remove();
+        }
+        const names = document.getElementById('cs-panel-names');
+        if (names) {
+            names.replaceChildren(e('p', 'cs-group-label', '昵称与备注'));
+            names.append(e('p', 'cs-hint', '用户名称请在「我的资料」修改；好友备注请在好友的「设定」中修改。备注会在单聊与群聊中保持一致。'));
+            const friendSettings = e('button', 'cs-inline-action', '打开好友资料与备注');
+            friendSettings.type = 'button';
+            friendSettings.addEventListener('click', () => {
+                const conversation = NextModel.conversation(SESSION_ID);
+                const friend = conversation && conversation.type === 'direct' && NextModel.friend(conversation.friendIds[0]);
+                if (!friend) return showNotification('群聊成员备注请从对应好友资料中修改', 'info');
+                hideModal(document.getElementById('chat-modal'));
+                openFriend(friend.id);
+            });
+            names.append(friendSettings);
+        }
+    }
     function openProfile(id) {
         const f = NextModel.friend(id); if (!f) return;
         const body = start('', 'profile', id);
         page.classList.add('next-profile-page');
         page.querySelector('header button').setAttribute('aria-label', '返回好友列表');
         const card = e('div', 'next-profile-card'), copy = e('div', 'next-profile-copy');
-        copy.append(e('h1', '', f.name), e('p', 'next-profile-status', NextMood.status(id)));
+        copy.append(e('h1', '', f.remark || f.name));
+        if (f.remark) copy.append(e('p', 'next-profile-original', '原名：' + f.name));
+        copy.append(e('p', 'next-profile-status', NextMood.status(id)));
         card.append(avatar(f.avatar), copy); body.append(card);
         if (!f.deleted) body.append(button('发消息', 'chat', id));
         body.append(button('设定', 'friend-settings', id));
@@ -88,26 +121,14 @@
         page.classList.remove('next-profile-page');
         body.append(field('好友名称', 'next-friend-name', 'text', f && f.name));
         body.querySelector('input').maxLength = 40;
+        if (f) body.append(field('备注（显示名称）', 'next-friend-remark', 'text', f.remark || ''));
         formAvatar = f && f.avatar || null;
         const preview = avatar(formAvatar); preview.id = 'next-avatar-preview'; body.append(preview);
         body.append(field('头像图片（自动缩小保存）', 'next-avatar-input', 'file'));
         body.querySelector('#next-avatar-input').accept = 'image/png,image/jpeg,image/webp';
         body.append(button('移除头像', 'remove-avatar'));
-        body.append(field('独立字卡：每行一张，可添加、编辑或删除整行', 'next-friend-cards', 'textarea', f && f.cards.join('\n')));
-        body.querySelector('textarea').maxLength = 200000;
-        body.append(e('p', 'next-note', '该好友在单聊和所有群聊中共用这些字卡。'));
         if (f) body.append(button('心情日历', 'friend-calendar', f.id));
-        const prefs = f ? NextRuntime.replyPreferences(f) : getDefaultSettings();
-        const mode = e('label', 'next-field', '回复模式'), select = e('select'); select.id = 'next-reply-mode'; select.setAttribute('aria-label', '回复模式');
-        [['card', '字卡'], ['ime', 'RandomIME'], ['mixed', '混合']].forEach(([v, t]) => { const option = e('option', '', t); option.value = v; select.append(option); }); select.value = prefs.textGenerationMode; mode.append(select); body.append(mode);
-        body.append(checkbox('允许已读不回', 'next-read-no-reply', prefs.allowReadNoReply), field('已读不回概率（0–100%）', 'next-read-chance', 'number', String(prefs.readNoReplyChance * 100)));
-        body.append(field('最短回复延迟（毫秒）', 'next-delay-min', 'number', String(prefs.replyDelayMin)), field('最长回复延迟（毫秒）', 'next-delay-max', 'number', String(prefs.replyDelayMax)));
-        body.append(checkbox('显示正在输入', 'next-typing', prefs.typingIndicatorEnabled), checkbox('显示已读', 'next-receipts', prefs.readReceiptsEnabled), checkbox('允许随机引用回复', 'next-quote', prefs.replyEnabled));
-        if (f) {
-            body.append(checkbox('使用预览版额外回复概率（默认关闭）', 'next-preview-probability-enabled', prefs.usePreviewProbability));
-            body.append(field('已保存的预览版回复概率（0–100%）', 'next-reply-probability', 'number', String(f.replyProbability * 100)));
-        }
-        body.append(button('保存好友与字卡', 'save-friend'));
+        body.append(button('保存好友资料', 'save-friend'));
         if (f && !f.deleted) body.append(button('删除好友（保留聊天）', 'delete-friend', f.id));
         if (f && f.deleted) body.append(e('p', 'next-note', '好友已删除，历史资料和字卡仍保留，不再自动发言。'));
     }
@@ -116,6 +137,38 @@
         if (c) return openGroupForm(c);
         groupSelection = new Set(); groupDraft = null;
         openGroupSelection();
+    }
+    function openReplyLibraryForCurrent() {
+        const conversation = NextModel.conversation(SESSION_ID);
+        if (!conversation) return showNotification('请先选择聊天', 'info');
+        const members = NextModel.members(conversation.id).filter(friend => !friend.deleted);
+        if (!members.length) return showNotification('当前聊天没有可编辑的好友字卡', 'info');
+        if (conversation.type === 'direct') return openReplyLibraryForFriend(members[0].id);
+        const body = start('选择要编辑字卡的好友', 'card-owner', conversation.id);
+        members.forEach(friend => {
+            const row = button(friend.remark || friend.name, 'edit-friend-cards', friend.id);
+            row.classList.add('next-friend-row');
+            row.prepend(avatar(friend.avatar));
+            body.append(row);
+        });
+    }
+    async function openReplyLibraryForFriend(friendId) {
+        try {
+            const conversation = NextModel.conversation(SESSION_ID);
+            const owner = NextModel.friend(friendId);
+            if (conversation && conversation.type === 'direct' && owner) {
+                const oldCards = await localforage.getItem(getSessionStorageKey(conversation.id, 'customReplies'));
+                const extras = Array.isArray(oldCards) ? oldCards.filter(card => typeof card === 'string' && card.trim() && !owner.cards.includes(card)) : [];
+                if (extras.length && confirm('发现此单聊旧回复库中有 ' + extras.length + ' 张未写入好友资料的字卡。要恢复到该好友的共用字卡吗？')) {
+                    await NextModel.saveFriend({ id: friendId, cards: owner.cards.concat(extras) });
+                }
+            }
+            await NextRuntime.beginCardEditor(friendId);
+            if (page && page.dataset.kind === 'card-owner') close();
+            if (global.NextInput) NextInput.close();
+            if (typeof global.openLegacyReplyLibrary !== 'function') throw new Error('原版自定义回复界面不可用');
+            global.openLegacyReplyLibrary();
+        } catch (error) { NextRuntime.report(error); }
     }
     function openGroupSelection() {
         const body = start('选择好友', 'group-select');
@@ -183,29 +236,36 @@
     }
     function openGlobals() {
         const body = start('网站设置', 'globals');
-        body.append(field('我的名称', 'next-my-name', 'text', settings.myName));
-        body.append(field('我的当前状态', 'next-my-status', 'text', settings.myStatus));
-        formAvatar = NextRuntime.globals().myAvatar || null;
+        const globals = NextRuntime.globals();
+        body.append(field('我的名称', 'next-my-name', 'text', globals.myName || settings.myName));
+        body.append(field('我的当前状态', 'next-my-status', 'text', globals.myStatus || ''));
+        formAvatar = globals.myAvatar || null;
         body.append(Object.assign(avatar(formAvatar), { id: 'next-avatar-preview' }), field('我的头像', 'next-avatar-input', 'file'));
         body.querySelector('#next-avatar-input').accept = 'image/png,image/jpeg,image/webp';
         const theme = e('label', 'next-field', '主题'); const select = e('select'); select.id = 'next-theme'; select.setAttribute('aria-label', '主题');
-        [['black-white', '黑白'], ['gold', '暖金'], ['green', '绿色']].forEach(([v, t]) => { const o = e('option', '', t); o.value = v; select.append(o); }); select.value = settings.colorTheme; if (!select.value) select.value = 'black-white'; theme.append(select); body.append(theme);
-        const dark = e('label', 'next-field', '夜间模式'); const checkbox = e('input'); checkbox.id = 'next-dark'; checkbox.type = 'checkbox'; checkbox.checked = settings.isDarkMode; checkbox.setAttribute('aria-label', '夜间模式'); dark.append(checkbox); body.append(dark);
-        body.append(field('聊天字号（12–24）', 'next-font-size', 'number', String(settings.fontSize)));
+        [['black-white', '黑白'], ['gold', '暖金'], ['green', '绿色']].forEach(([v, t]) => { const o = e('option', '', t); o.value = v; select.append(o); }); select.value = globals.colorTheme || 'black-white'; if (!select.value) select.value = 'black-white'; theme.append(select); body.append(theme);
+        const dark = e('label', 'next-field', '夜间模式'); const checkbox = e('input'); checkbox.id = 'next-dark'; checkbox.type = 'checkbox'; checkbox.checked = !!globals.isDarkMode; checkbox.setAttribute('aria-label', '夜间模式'); dark.append(checkbox); body.append(dark);
+        body.append(e('h3', 'next-settings-heading', '全站功能'));
+        body.append(e('p', 'next-note', '保活音频是全站辅助功能；浏览器或系统仍可能暂停后台网页。'));
+        body.append(button('切换后台保活音频', 'toggle-keepalive'));
+        const keepalive = e('p', 'next-note'); keepalive.id = 'next-keepalive-status';
+        const legacyKeepalive = document.getElementById('keepalive-audio-desc');
+        keepalive.textContent = legacyKeepalive ? legacyKeepalive.textContent : '保活状态由浏览器控制';
+        body.append(keepalive, button('请求本机消息通知权限', 'notification'));
         body.append(button('保存网站设置', 'save-globals'));
     }
     function openBackup() {
-        const body = start('新版轻量备份', 'backup');
-        body.append(e('p', 'next-note', '包含好友、字卡、群关系、消息、草稿、好友日历状态与必要设置。头像、图片、音视频、音乐文件、活动记录、日历回收站和自定义附件不包含；不会触碰旧网站。旧备份兼容导入尚未完成。'));
-        body.append(button('导出新版轻量备份', 'export'), field('导入新版 JSON（恢复替换新版数据）', 'next-import-file', 'file'));
+        const id = String(SESSION_ID || ''), conversation = NextModel.conversation(id);
+        const body = start('当前聊天 · 数据管理', 'backup', id);
+        if (!conversation) { body.append(e('p', 'next-note', '请从聊天列表先打开一个会话，再管理该聊天的数据。')); return; }
+        body.append(e('p', 'next-note', '全量备份只包含当前聊天、会话设置与该聊天成员的共享好友资料快照（含头像）。恢复好友快照会影响所有引用该好友的聊天，并需单独确认；其它会话与全站设置不会纳入。旧站备份不受影响。'));
+        body.append(button('导出当前聊天全量备份', 'export-conversation', id), button('导出聊天记录（仅消息）', 'export-messages', id));
+        body.append(field('导入当前聊天备份（仅同一会话 ID 与成员）', 'next-import-file', 'file'));
         body.querySelector('#next-import-file').accept = '.json,application/json';
-        body.append(e('p', 'next-note', '恢复前会显示数量并要求确认。请先导出当前新版数据；旧版备份会被拒绝。预览版导入上限 10MB。'));
+        body.append(e('p', 'next-note', '备份包含好友资料快照中的头像字段；背景图库、贴图媒体、消息内图片/音视频/附件载荷与共同活动媒体不包含，消息以文字占位保留。单条导出文件上限 10MB。导入不会按名称匹配，也不会清理其它聊天、全站设置或旧站数据。目标聊天原有的未纳入媒体会保留。'));
     }
     function openBackgroundSettings() {
-        const body = start('通知与保活音频', 'background');
-        body.append(e('p', 'next-note', '保活音频仅辅助后台运行，系统仍可能暂停网页。本阶段没有服务器推送。'));
-        body.append(button('切换保活音频', 'toggle-keepalive'), button('请求本机消息通知权限', 'notification'));
-        const status = e('p', 'next-note'); status.id = 'next-keepalive-status'; status.textContent = document.getElementById('keepalive-audio-desc').textContent; body.append(status);
+        return openGlobals();
     }
     async function handle(event) {
         const node = event.target.closest('[data-next-action]'); if (!node) return;
@@ -237,6 +297,7 @@
         }
         if (action === 'friend') return openProfile(id);
         if (action === 'friend-settings') return openFriend(id);
+        if (action === 'edit-friend-cards') return openReplyLibraryForFriend(id);
         if (action === 'friend-calendar') return guarded(node, () => NextMood.open(id));
         if (action === 'create-group') return openGroup();
         if (action === 'globals') return openGlobals();
@@ -278,18 +339,7 @@
                 if (version === avatarVersion) close(); showNotification('背景已保存', 'success');
             }
             if (action === 'save-friend') {
-                const probabilityField = page.querySelector('#next-reply-probability');
-                const chance = Number(page.querySelector('#next-read-chance').value);
-                if (!Number.isFinite(chance) || chance < 0 || chance > 100) throw new Error('已读不回概率应为 0–100');
-                const old = NextModel.friend(page.dataset.id);
-                const replySettings = { ...(old && old.replySettings || {}), textGenerationMode: page.querySelector('#next-reply-mode').value,
-                    allowReadNoReply: page.querySelector('#next-read-no-reply').checked, readNoReplyChance: chance / 100,
-                    replyDelayMin: Number(page.querySelector('#next-delay-min').value), replyDelayMax: Number(page.querySelector('#next-delay-max').value),
-                    typingIndicatorEnabled: page.querySelector('#next-typing').checked, readReceiptsEnabled: page.querySelector('#next-receipts').checked, replyEnabled: page.querySelector('#next-quote').checked };
-                if (probabilityField) replySettings.usePreviewProbability = page.querySelector('#next-preview-probability-enabled').checked;
-                NextModel.preferences(replySettings);
-                const input = { name: page.querySelector('#next-friend-name').value, avatar: formAvatar, cards: page.querySelector('#next-friend-cards').value.split('\n').map(c => c.trim()).filter(Boolean), replySettings };
-                if (probabilityField) { const probability = Number(probabilityField.value); if (!Number.isFinite(probability) || probability < 0 || probability > 100) throw new Error('回复概率应为 0–100'); input.replyProbability = probability / 100; }
+                const input = { name: page.querySelector('#next-friend-name').value, remark: page.querySelector('#next-friend-remark')?.value || '', avatar: formAvatar };
                 if (page.dataset.id) input.id = page.dataset.id;
                 const f = await NextModel.saveFriend(input); await NextRuntime.sync(); NextRuntime.applyCurrent(); renderFriends(); ShikiAppShell.refresh(); openProfile(f.id); showNotification('已保存', 'success');
             }
@@ -307,16 +357,16 @@
                 if (version === avatarVersion) { close(); await NextRuntime.open(c.id); }
             }
             if (action === 'save-globals') {
-                const size = Number(page.querySelector('#next-font-size').value);
-                if (!Number.isFinite(size) || size < 12 || size > 24) throw new Error('字号应为 12–24');
-                const next = { ...settings, myName: page.querySelector('#next-my-name').value.trim().slice(0, 40) || '我', myStatus: page.querySelector('#next-my-status').value.trim().slice(0, 200), myAvatar: formAvatar, colorTheme: page.querySelector('#next-theme').value, isDarkMode: page.querySelector('#next-dark').checked, fontSize: size };
-                await NextRuntime.saveGlobals(next); Object.assign(settings, next); NextRuntime.applyCurrent(); refreshProfiles(); close(); showNotification('已保存', 'success');
+                const next = { myName: page.querySelector('#next-my-name').value.trim().slice(0, 40) || '我', myStatus: page.querySelector('#next-my-status').value.trim().slice(0, 200), myAvatar: formAvatar, colorTheme: page.querySelector('#next-theme').value, isDarkMode: page.querySelector('#next-dark').checked };
+                await NextRuntime.saveGlobals(next); NextRuntime.applyCurrent(); refreshProfiles(); close(); showNotification('已保存', 'success');
             }
-            if (action === 'export') { await NextRuntime.flush(); const backup = await NextBackup.exportData(); downloadFileFallback(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), 'shiki-next-light-' + Date.now() + '.json'); }
+            if (action === 'export-conversation') { await NextRuntime.flush(); const backup = await NextBackup.exportConversation(id); downloadFileFallback(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), 'shiki-chat-' + id + '-' + Date.now() + '.json'); }
+            if (action === 'export-messages') { await NextRuntime.flush(); const backup = await NextBackup.exportMessages(id); downloadFileFallback(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), 'shiki-messages-' + id + '-' + Date.now() + '.json'); }
         });
     }
     function initialize() {
         root = document.getElementById('shiki-app-shell');
+        prepareLegacySettingSurfaces();
         const view = e('section', 'shiki-shell-view'); view.dataset.view = 'friends'; view.hidden = true;
         const header = e('header', 'shiki-shell-topbar next-friends-topbar'), tools = e('div', 'next-friends-tools');
         const iconButton = (label, action, icon, id) => {
@@ -369,26 +419,42 @@
                 guarded(null, async () => { const result = await cropImageToSquare(file, 256); if (version !== avatarVersion) return; if (result.length > 250000) throw new Error('头像过大，请选择较简单的图片'); formAvatar = result; const old = page.querySelector('#next-avatar-preview'); if (old) old.replaceWith(Object.assign(avatar(result), { id: 'next-avatar-preview' })); });
             }
             if (event.target.id === 'next-import-file' && event.target.files[0]) guarded(null, async () => {
-                const file = event.target.files[0]; if (file.size > 10 * 1024 * 1024) throw new Error('预览版仅支持 10MB 以下轻量备份');
-                const data = JSON.parse(await file.text()); NextBackup.validate(data);
-                if (!confirm('恢复 ' + data.model.friends.length + ' 位好友、' + data.model.conversations.length + ' 个会话？这会替换新版数据，不影响旧网站。请先备份当前新版。')) return;
-                await NextRuntime.flush(); NextRuntime.cancelReplies(); await NextBackup.importData(data); location.hash = ''; NextStorage.session.clear(); location.reload();
+                const file = event.target.files[0]; event.target.value = '';
+                if (file.size > 10 * 1024 * 1024) throw new Error('单个聊天备份上限为 10MB');
+                const data = JSON.parse(await file.text()), targetId = String(page.dataset.id || '');
+                NextBackup.validateConversation(data);
+                if (data.sessionId !== targetId) throw new Error('备份属于另一会话，已取消；不会按名称合并');
+                if (!confirm('将恢复此聊天的消息、草稿和会话设置。该聊天现有数据会被备份内容替换；其它会话不受影响。继续吗？')) return;
+                const restoreShared = confirm('是否同时恢复好友资料快照（备注、字卡及回复偏好）？选择“确定”会影响所有引用这些好友的单聊和群聊；选择“取消”则仅恢复当前聊天数据。');
+                await NextRuntime.flush(); NextRuntime.cancelReplies();
+                await NextBackup.importConversation(data, targetId, restoreShared);
+                if (!await loadData()) throw new Error('导入已写入，但聊天重新读取失败；请重试刷新当前聊天');
+                NextRuntime.applyCurrent(); renderMessages(); close();
+                ShikiAppShell.refresh(); showNotification('当前聊天备份已恢复', 'success');
             });
         });
         // Guard legacy entry points before their document-level handlers run.
         document.addEventListener('click', event => {
             const target = event.target.closest('#mood-function,#group-chat-btn,#session-manager-btn,#custom-replies-function,#chat-settings,#advanced-settings,#data-settings,#appearance-settings,#export-all-settings,#import-all-settings,#export-chat-btn,#import-chat-btn,#export-all-settings-real,#import-all-settings-real,#export-chat-btn-real,#import-chat-btn-real');
             if (!target) return;
+            if (legacyPassThrough === target.id) { legacyPassThrough = null; return; }
             event.preventDefault(); event.stopImmediatePropagation();
             if (target.id === 'group-chat-btn') return openGroup(SESSION_ID);
             if (target.id === 'session-manager-btn') return ShikiAppShell.showPrimary('conversations');
-            if (target.id === 'appearance-settings') return openGlobals();
+            if (target.id === 'appearance-settings' || target.id === 'chat-settings' || target.id === 'advanced-settings') {
+                legacyPassThrough = target.id;
+                setTimeout(() => {
+                    if (legacyPassThrough === target.id) target.click();
+                }, 0);
+                return;
+            }
             if (target.id.includes('data') || /export|import/.test(target.id)) return openBackup();
             const c = NextModel.conversation(SESSION_ID);
             if (target.id === 'mood-function') {
                 if (c && c.type === 'direct') return NextMood.open(c.friendIds[0]).catch(NextRuntime.report);
                 return showNotification('请从对应好友的设定打开心情日历', 'info');
             }
+            if (target.id === 'custom-replies-function') return openReplyLibraryForCurrent();
             if (c && c.type === 'direct') return openFriend(c.friendIds[0]);
             if (c) return openGroup(c.id);
             showNotification('请先选择好友聊天', 'info');
@@ -410,5 +476,5 @@
             ShikiAppShell.refresh();
         });
     }
-    global.NextUI = Object.freeze({ initialize, renderFriends, refreshProfiles, openProfile, openFriend, openGroup, openCreate, openBackup, openBackground, openListEditor, deleteConversation, beforeNavigate: () => { if (global.NextRuntime) NextRuntime.flush().catch(NextRuntime.report); } });
+    global.NextUI = Object.freeze({ initialize, renderFriends, refreshProfiles, openProfile, openFriend, openGroup, openCreate, openBackup, openBackground, openListEditor, openReplyLibraryForCurrent, deleteConversation, beforeNavigate: () => { if (global.NextRuntime) NextRuntime.flush().catch(NextRuntime.report); } });
 })(window);

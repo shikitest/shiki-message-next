@@ -336,9 +336,10 @@ showUserMessageTranslation: false,
 const loadData = async () => {
     const targetSessionId = String(SESSION_ID || '');
     if (!targetSessionId) throw new Error('SESSION_ID 未初始化，拒绝加载会话数据');
+    const nextRuntimeGeneration = window.NextRuntime ? window.NextRuntime.generation() : null;
+    const isCurrentRuntimeLoad = () => String(SESSION_ID || '') === targetSessionId &&
+        (!window.NextRuntime || window.NextRuntime.generation() === nextRuntimeGeneration);
     try {
-        settings = getDefaultSettings();
-
         const readSessionData = () => Promise.allSettled([
             localforage.getItem(getSessionStorageKey(targetSessionId, 'chatSettings')),
             localforage.getItem(getSessionStorageKey(targetSessionId, 'chatMessages')),
@@ -360,12 +361,13 @@ const loadData = async () => {
             localforage.getItem(getSessionStorageKey(targetSessionId, 'myStickerLibrary')),
             localforage.getItem(getSessionStorageKey(targetSessionId, 'customReplyGroups')),
             localforage.getItem(getSessionStorageKey(targetSessionId, 'customPokeGroups')),
-            localforage.getItem(getSessionStorageKey(targetSessionId, 'customStatusGroups'))
+            localforage.getItem(getSessionStorageKey(targetSessionId, 'customStatusGroups')),
+            window.NextRuntime ? localforage.getItem(window.NextRuntime.GLOBAL_KEY) : Promise.resolve(null)
         ]);
         const runtimeLoad = window.SessionRuntimeStore
             ? await window.SessionRuntimeStore.load(targetSessionId, readSessionData)
             : { stale: false, value: await readSessionData(), token: null };
-        if (runtimeLoad.stale || String(SESSION_ID || '') !== targetSessionId) {
+        if (runtimeLoad.stale || !isCurrentRuntimeLoad() || String(SESSION_ID || '') !== targetSessionId) {
             console.warn('[loadData] 已丢弃过期会话加载结果:', targetSessionId);
             return false;
         }
@@ -394,6 +396,11 @@ const loadData = async () => {
         const savedReplyGroups = getVal(18);
         const savedPokeGroups = getVal(19);
         const savedStatusGroups = getVal(20);
+        const savedGlobalSettings = getVal(21);
+
+        // Do not replace the currently visible conversation with a stale load.
+        if (!isCurrentRuntimeLoad()) return false;
+        settings = getDefaultSettings();
 
         // Missing session keys must never leave values from a previous session in memory.
         partnerPersonas = [];
@@ -416,7 +423,13 @@ const loadData = async () => {
         if (savedPartnerPersonas) partnerPersonas = savedPartnerPersonas;
 
         if (savedSettings) Object.assign(settings, savedSettings);
-        if (window.NextRuntime) Object.assign(settings, await localforage.getItem(window.NextRuntime.GLOBAL_KEY) || {});
+        // Only the user's profile is shared. Appearance and chat controls are
+        // loaded from this conversation's own chatSettings record above.
+        if (window.NextRuntime && savedGlobalSettings) {
+            ['myName', 'myStatus', 'myAvatar'].forEach(key => {
+                if (Object.prototype.hasOwnProperty.call(savedGlobalSettings, key)) settings[key] = savedGlobalSettings[key];
+            });
+        }
 
         if (
             savedSettings &&
@@ -512,7 +525,7 @@ const loadData = async () => {
         try {
             const ce = await localforage.getItem(getSessionStorageKey(targetSessionId, 'customEmojis'));
             if (
-                String(SESSION_ID || '') !== targetSessionId ||
+                !isCurrentRuntimeLoad() || String(SESSION_ID || '') !== targetSessionId ||
                 (window.SessionRuntimeStore && !window.SessionRuntimeStore.isCurrent(runtimeLoad.token))
             ) return false;
             if (ce && Array.isArray(ce)) customEmojis = ce;
@@ -541,13 +554,13 @@ const loadData = async () => {
         if (!window.NextRuntime) { try { await initMoodData(); } catch(e) { console.warn("心情数据加载失败", e); } }
         try { await loadEnvelopeData(); } catch(e) { console.warn("信封数据加载失败", e); }
         if (
-            String(SESSION_ID || '') !== targetSessionId ||
+            !isCurrentRuntimeLoad() || String(SESSION_ID || '') !== targetSessionId ||
             (window.SessionRuntimeStore && !window.SessionRuntimeStore.isCurrent(runtimeLoad.token))
         ) return false;
 
         displayedMessageCount = HISTORY_BATCH_SIZE;
 
-        const nextLoadGeneration = window.NextRuntime ? window.NextRuntime.generation() : null;
+        const nextLoadGeneration = nextRuntimeGeneration;
         setTimeout(() => {
             if (String(SESSION_ID || '') !== targetSessionId || (window.NextRuntime && window.NextRuntime.generation() !== nextLoadGeneration)) return;
             applyAllAvatarFrames();
@@ -723,7 +736,6 @@ const saveData = (sessionIdOverride) => {
     const promises = [
         { key: 'chatSettings',           val: () => localforage.setItem(sessionKey('chatSettings'), saveSnapshot.settings) },
         { key: 'customReplies',          val: () => window.NextRuntime ? Promise.resolve() : localforage.setItem(sessionKey('customReplies'), saveSnapshot.customReplies) },
-        { key: 'globalSettings',         val: () => window.NextRuntime ? window.NextRuntime.saveGlobals(saveSnapshot.settings) : Promise.resolve() },
         { key: 'customReplyGroups',      val: () => localforage.setItem(sessionKey('customReplyGroups'), saveSnapshot.customReplyGroups) },
         { key: 'customPokeGroups',        val: () => localforage.setItem(sessionKey('customPokeGroups'), saveSnapshot.customPokeGroups) },
         { key: 'customStatusGroups',      val: () => localforage.setItem(sessionKey('customStatusGroups'), saveSnapshot.customStatusGroups) },
@@ -2997,6 +3009,9 @@ function showModal(modalElement, focusElement = null) {
             if (modalElement._hideTimeout) clearTimeout(modalElement._hideTimeout);
             modalElement._hideTimeout = setTimeout(() => {
                 modalElement.style.display = 'none';
+                if (modalElement.id === 'custom-replies-modal' && window.NextRuntime) {
+                    window.NextRuntime.saveEditorCards().catch(function () {}).finally(window.NextRuntime.endCardEditor);
+                }
             }, 300);
         }
 

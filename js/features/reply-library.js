@@ -893,6 +893,7 @@ function _renderStickerTab(list, itemsToRender) {
     });
 }
 function _getDisabledItemsSet() {
+    if (window.NextRuntime && NextRuntime.cardEditorOwnerId()) return NextRuntime.editorDisabledCards();
     try {
         const raw = NextStorage.local.getItem('disabledReplyItems');
         return raw ? new Set(JSON.parse(raw)) : new Set();
@@ -911,6 +912,7 @@ function _saveDisabledStickerItemsSet(set) {
 }
 
 function _saveDisabledItemsSet(set) {
+    if (window.NextRuntime && NextRuntime.cardEditorOwnerId()) return NextRuntime.setEditorDisabledCards(set);
     NextStorage.local.setItem('disabledReplyItems', JSON.stringify([...set]));
 }
 
@@ -2172,10 +2174,7 @@ function _showBatchAddDialog() {
     };
 }
 
-function initReplyLibraryListeners() {
-    const entryBtn = document.getElementById('custom-replies-function');
-    if (entryBtn) {
-    entryBtn.addEventListener('click', () => {
+function openLegacyReplyLibrary() {
         if (window.SessionRuntimeStore) window.SessionRuntimeStore.bindModal(DOMElements.customRepliesModal.modal, SESSION_ID);
             hideModal(DOMElements.advancedModal.modal);
             currentMajorTab = 'reply';
@@ -2201,8 +2200,12 @@ function initReplyLibraryListeners() {
             });
             renderReplyLibrary();
             showModal(DOMElements.customRepliesModal.modal);
-        });
-    }
+}
+window.openLegacyReplyLibrary = openLegacyReplyLibrary;
+
+function initReplyLibraryListeners() {
+    const entryBtn = document.getElementById('custom-replies-function');
+    if (entryBtn) entryBtn.addEventListener('click', openLegacyReplyLibrary);
 
     document.querySelectorAll('.sidebar-btn').forEach(btn => {
         btn.addEventListener('click', () => {

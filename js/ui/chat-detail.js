@@ -7,6 +7,7 @@
     let avatarInput = null;
     let initialized = false;
     let refreshVersion = 0;
+    let edgeGesture = null;
 
     function make(tag, className, text) {
         const node = document.createElement(tag);
@@ -129,18 +130,29 @@
             '<span class="shiki-chat-avatar"></span>',
             '<span class="shiki-chat-heading"><strong class="shiki-chat-title"></strong><small class="shiki-chat-subtitle"></small></span>',
             '<button type="button" data-chat-action="search" aria-label="搜索聊天"></button>',
-            '<button type="button" data-chat-action="detail" aria-label="聊天详情"></button>',
-            '<button type="button" data-chat-action="settings" aria-label="聊天设置"></button>'
+            '<button type="button" data-chat-action="announcement" aria-label="公告"></button>',
+            '<button type="button" data-chat-action="settings" aria-label="设置"></button>'
         ].join('');
-        [['back', 'back'], ['search', 'search'], ['detail', 'menu'], ['settings', 'settings']].forEach(function (entry) {
-            chatBar.querySelector('[data-chat-action="' + entry[0] + '"]').appendChild(global.ShikiAppShell.createIcon(entry[1]));
+        [['back', 'back'], ['search', 'search'], ['announcement', 'newspaper'], ['settings', 'settings']].forEach(function (entry) {
+            const button = chatBar.querySelector('[data-chat-action="' + entry[0] + '"]');
+            if (entry[0] === 'announcement') {
+                const icon = make('i', 'fas fa-newspaper');
+                icon.setAttribute('aria-hidden', 'true');
+                button.appendChild(icon);
+            } else button.appendChild(global.ShikiAppShell.createIcon(entry[1]));
         });
         document.body.appendChild(chatBar);
         chatBar.addEventListener('click', function (event) {
             if (event.target.closest('[data-chat-action="back"]')) return context.backToConversations && context.backToConversations();
             if (event.target.closest('[data-chat-action="search"]')) return global.MessageSearch && global.MessageSearch.open();
-            if (event.target.closest('[data-chat-action="settings"]')) return open('settings');
-            if (event.target.closest('[data-chat-action="detail"]')) return open();
+            if (event.target.closest('[data-chat-action="settings"]')) {
+                close();
+                return context.openLegacy && context.openLegacy('settings-btn');
+            }
+            if (event.target.closest('[data-chat-action="announcement"]')) {
+                if (typeof global.reopenDailyGreeting === 'function') return global.reopenDailyGreeting();
+                return context.notify && context.notify('公告模块暂不可用', 'warning');
+            }
         });
     }
 
@@ -310,6 +322,22 @@
         context = nextContext || {};
         buildChatBar();
         buildPage();
+        const chat = document.getElementById('chat-container');
+        if (chat) {
+            chat.addEventListener('pointerdown', function (event) {
+                if (event.pointerType === 'mouse' || event.button !== 0 || event.isPrimary === false) return;
+                if (event.target.closest('input,textarea,button,a,[contenteditable="true"],.message-wrapper,.message-meta-actions,.media-viewer')) return;
+                if (event.clientX > 34) return;
+                edgeGesture = { x: event.clientX, y: event.clientY, id: event.pointerId };
+            }, { passive: true });
+            chat.addEventListener('pointerup', function (event) {
+                if (!edgeGesture || event.pointerId !== edgeGesture.id) return;
+                const dx = event.clientX - edgeGesture.x, dy = event.clientY - edgeGesture.y;
+                edgeGesture = null;
+                if (dx > 90 && Math.abs(dy) < 54) context.backToConversations && context.backToConversations();
+            }, { passive: true });
+            ['pointercancel', 'lostpointercapture'].forEach(name => chat.addEventListener(name, () => { edgeGesture = null; }, { passive: true }));
+        }
         initialized = true;
         refresh();
     }

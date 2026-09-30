@@ -1022,13 +1022,23 @@ var statusPool = [
 
     // 混合系统预设 + 用户自定义状态池
     var userStatusPool = [];
-    try { userStatusPool = JSON.parse(NextStorage.local.getItem('dg_status_pool') || '[]'); } catch(e) {}
+    try { userStatusPool = JSON.parse(announcementGet('dg_status_pool') || '[]'); } catch(e) {}
     var userStatusTexts = userStatusPool.map(function(item) { return item.status || item; }).filter(Boolean);
     var mixedStatusPool = statusPool.concat(userStatusTexts);
     var status = mixedStatusPool[Math.floor(seededRandDg(seed, 1) * mixedStatusPool.length)];
 
     return { timeLabel: timeLabel, timeEmoji: timeEmoji, festival: festival, weather: weather, status: status };
 }
+
+function announcementStorageKey(key) {
+    var sessionId = String(window.SESSION_ID || 'unassigned');
+    return typeof getSessionStorageKey === 'function'
+        ? getSessionStorageKey(sessionId, 'announcement:' + key)
+        : 'announcement:' + sessionId + ':' + key;
+}
+function announcementGet(key) { return NextStorage.local.getItem(announcementStorageKey(key)); }
+function announcementSet(key, value) { return NextStorage.local.setItem(announcementStorageKey(key), value); }
+function announcementRemove(key) { return NextStorage.local.removeItem(announcementStorageKey(key)); }
 
 function _buildDailyGreeting() {
     try {
@@ -1070,7 +1080,7 @@ function _buildDailyGreeting() {
         var noteText = festival ? festival.note : '今天也要元气满满，我在这里陪着你 ✦';
 
         var customData = {};
-        try { customData = JSON.parse(NextStorage.local.getItem('dg_custom_data') || '{}'); } catch(e2) {}
+        try { customData = JSON.parse(announcementGet('dg_custom_data') || '{}'); } catch(e2) {}
 
         var now2 = new Date();
         var dailySeed = now2.getFullYear() * 10000 + (now2.getMonth()+1) * 100 + now2.getDate();
@@ -1112,7 +1122,7 @@ function _buildDailyGreeting() {
         setEl('dg-partner-mood-note', partnerMoodNote || (todayMood && todayMood.partner ? pName + ' 记录了今天的心情 ☆' : ''));
 
         var statusPoolData = [];
-        try { statusPoolData = JSON.parse(NextStorage.local.getItem('dg_status_pool') || '[]'); } catch(e2) {}
+        try { statusPoolData = JSON.parse(announcementGet('dg_status_pool') || '[]'); } catch(e2) {}
         // 将系统预设 + 用户自定义混合后，按今日种子选取
         var systemStatusItems = (function() {
             var sysPool = [];
@@ -1157,14 +1167,14 @@ function _buildDailyGreeting() {
         var months = ['一','二','三','四','五','六','七','八','九','十','十一','十二'];
         setEl('dg-date-stamp', now.getFullYear() + ' · ' + months[now.getMonth()] + '月' + now.getDate() + '日');
 
-        var headerBg = NextStorage.local.getItem('dg_header_bg');
+        var headerBg = announcementGet('dg_header_bg');
         var bgEl = document.getElementById('dg-header-band-bg');
         if (bgEl && headerBg) {
             bgEl.style.backgroundImage = 'url(' + headerBg + ')';
             bgEl.classList.add('has-img');
         }
 
-        var overlayBg = NextStorage.local.getItem('dg_overlay_bg');
+        var overlayBg = announcementGet('dg_overlay_bg');
         if (overlayBg) { applyDgOverlayBg(overlayBg); }
 
         var decoImg = customData.decoImg;
@@ -1264,7 +1274,7 @@ window.openDailyGreetingEditor = function() {
     var modal = document.getElementById('dg-editor-modal');
     if (!modal) return;
     var customData = {};
-    try { customData = JSON.parse(NextStorage.local.getItem('dg_custom_data') || '{}'); } catch(e) {}
+    try { customData = JSON.parse(announcementGet('dg_custom_data') || '{}'); } catch(e) {}
     var titleEl = document.getElementById('dg-edit-title');
     var noteEl = document.getElementById('dg-edit-note');
     if (titleEl) titleEl.value = (customData.titles && customData.titles.length) ? customData.titles.join('\n') : (customData.title || '');
@@ -1285,7 +1295,7 @@ window.closeDailyGreetingEditor = function() {
 };
 window.saveDailyGreetingCustom = function() {
     var customData = {};
-    try { customData = JSON.parse(NextStorage.local.getItem('dg_custom_data') || '{}'); } catch(e) {}
+    try { customData = JSON.parse(announcementGet('dg_custom_data') || '{}'); } catch(e) {}
     var titleEl = document.getElementById('dg-edit-title');
     var noteEl = document.getElementById('dg-edit-note');
     if (titleEl && titleEl.value.trim()) {
@@ -1298,30 +1308,30 @@ window.saveDailyGreetingCustom = function() {
         customData.notes = notes;
         customData.note = notes[0];
     } else { delete customData.notes; delete customData.note; }
-    NextStorage.local.setItem('dg_custom_data', JSON.stringify(customData));
+    announcementSet('dg_custom_data', JSON.stringify(customData));
     closeDailyGreetingEditor();
     if (typeof _buildDailyGreeting === 'function') _buildDailyGreeting();
     if (typeof showNotification === 'function') showNotification('公告已保存 ✦', 'success');
 };
 window.clearDgDecoImg = function() {
     var customData = {};
-    try { customData = JSON.parse(NextStorage.local.getItem('dg_custom_data') || '{}'); } catch(e) {}
+    try { customData = JSON.parse(announcementGet('dg_custom_data') || '{}'); } catch(e) {}
     delete customData.decoImg;
-    NextStorage.local.setItem('dg_custom_data', JSON.stringify(customData));
+    announcementSet('dg_custom_data', JSON.stringify(customData));
     var prev = document.getElementById('dg-deco-preview');
     if (prev) prev.style.display = 'none';
     var wrap = document.getElementById('dg-deco-img-wrap');
     if (wrap) wrap.style.display = 'none';
 };
 window.clearDgHeaderBg = function() {
-    NextStorage.local.removeItem('dg_header_bg');
+    announcementRemove('dg_header_bg');
     var bgEl = document.getElementById('dg-header-band-bg');
     if (bgEl) { bgEl.style.backgroundImage = ''; bgEl.classList.remove('has-img'); }
 };
 
 window.onDgOverlayOpacityChange = function(val) {
     var tint = parseInt(val) / 100;
-    NextStorage.local.setItem('dg_overlay_bg_tint', tint);
+    announcementSet('dg_overlay_bg_tint', tint);
     var valEl = document.getElementById('dg-overlay-opacity-val');
     if (valEl) valEl.textContent = val + '%';
     var tintLayer = document.getElementById('dg-card-tint-overlay');
@@ -1334,14 +1344,14 @@ window.handleDgOverlayBgUpload = function(input) {
     var reader = new FileReader();
     reader.onload = function(ev) {
         var data = ev.target.result;
-        NextStorage.local.setItem('dg_overlay_bg', data);
+        announcementSet('dg_overlay_bg', data);
         applyDgOverlayBg(data);
         var prev = document.getElementById('dg-overlay-bg-preview');
         var prevImg = document.getElementById('dg-overlay-bg-preview-img');
         if (prev && prevImg) { prevImg.src = data; prev.style.display = 'block'; }
         var opRow = document.getElementById('dg-overlay-opacity-row');
         if (opRow) opRow.style.display = 'block';
-        var savedTint = parseFloat(NextStorage.local.getItem('dg_overlay_bg_tint'));
+        var savedTint = parseFloat(announcementGet('dg_overlay_bg_tint'));
         var pct = isNaN(savedTint) ? 25 : Math.round(savedTint * 100);
         var slider = document.getElementById('dg-overlay-opacity-slider');
         var valEl = document.getElementById('dg-overlay-opacity-val');
@@ -1352,7 +1362,7 @@ window.handleDgOverlayBgUpload = function(input) {
 };
 
 window.clearDgOverlayBg = function() {
-    NextStorage.local.removeItem('dg_overlay_bg');
+    announcementRemove('dg_overlay_bg');
     applyDgOverlayBg(null);
     var prev = document.getElementById('dg-overlay-bg-preview');
     if (prev) prev.style.display = 'none';
@@ -1367,7 +1377,7 @@ function applyDgOverlayBg(data, tintOpacity) {
     var tintLayer = document.getElementById('dg-card-tint-overlay');
     if (!card || !bgLayer) return;
     if (tintOpacity === undefined || tintOpacity === null) {
-        var saved = parseFloat(NextStorage.local.getItem('dg_overlay_bg_tint'));
+        var saved = parseFloat(announcementGet('dg_overlay_bg_tint'));
         tintOpacity = isNaN(saved) ? 0.25 : saved;
     }
     if (data) {
@@ -1388,7 +1398,7 @@ function applyDgOverlayBg(data, tintOpacity) {
 }
 
 (function() {
-    var savedOverlayBg = NextStorage.local.getItem('dg_overlay_bg');
+    var savedOverlayBg = announcementGet('dg_overlay_bg');
     if (savedOverlayBg) {
         document.addEventListener('DOMContentLoaded', function() {
             applyDgOverlayBg(savedOverlayBg);
@@ -1397,7 +1407,7 @@ function applyDgOverlayBg(data, tintOpacity) {
             if (prev && prevImg) { prevImg.src = savedOverlayBg; prev.style.display = 'block'; }
             var opRow = document.getElementById('dg-overlay-opacity-row');
             if (opRow) opRow.style.display = 'block';
-            var savedOp = parseFloat(NextStorage.local.getItem('dg_overlay_bg_tint'));
+            var savedOp = parseFloat(announcementGet('dg_overlay_bg_tint'));
             var pct = isNaN(savedOp) ? 25 : Math.round(savedOp * 100);
             var slider = document.getElementById('dg-overlay-opacity-slider');
             var valEl = document.getElementById('dg-overlay-opacity-val');
@@ -1426,7 +1436,7 @@ window.switchToAnnouncementPanel = function() {
     if (addBtn) addBtn.style.display = 'none';
     if (titleEl) titleEl.textContent = '今日公告配置';
     var customData = {};
-    try { customData = JSON.parse(NextStorage.local.getItem('dg_custom_data') || '{}'); } catch(e2) {}
+    try { customData = JSON.parse(announcementGet('dg_custom_data') || '{}'); } catch(e2) {}
     var titleInput = document.getElementById('dg-edit-title');
     var noteInput = document.getElementById('dg-edit-note');
     if (titleInput) titleInput.value = (customData.titles && customData.titles.length) ? customData.titles.join('\n') : (customData.title || '');
@@ -1436,7 +1446,7 @@ window.switchToAnnouncementPanel = function() {
         var prevImg = document.getElementById('dg-deco-preview-img');
         if (prev && prevImg) { prevImg.src = customData.decoImg; prev.style.display = 'block'; }
     }
-    var savedOverlayBg2 = NextStorage.local.getItem('dg_overlay_bg');
+    var savedOverlayBg2 = announcementGet('dg_overlay_bg');
     if (savedOverlayBg2) {
         var overlayPrev = document.getElementById('dg-overlay-bg-preview');
         var overlayPrevImg = document.getElementById('dg-overlay-bg-preview-img');
@@ -1449,7 +1459,7 @@ window.renderAnnStatusPool = function() {
     var listEl = document.getElementById('ann-status-pool-list');
     if (!listEl) return;
     var pool = [];
-    try { pool = JSON.parse(NextStorage.local.getItem('dg_status_pool') || '[]'); } catch(e2) {}
+    try { pool = JSON.parse(announcementGet('dg_status_pool') || '[]'); } catch(e2) {}
     listEl.innerHTML = '';
     if (pool.length === 0) {
         listEl.innerHTML = '<div style="font-size:12px;color:var(--text-secondary);text-align:center;padding:10px 0;opacity:0.6;">暂无条目，添加后将随机抽取</div>';
@@ -1481,11 +1491,11 @@ window.addAnnStatusPoolItem = function() {
     var iconImg = iconInput ? (iconInput.dataset.imgSrc || '') : '';
     if (!status && !label) { if (typeof showNotification === 'function') showNotification('请至少填写状态或标签', 'warning'); return; }
     var pool = [];
-    try { pool = JSON.parse(NextStorage.local.getItem('dg_status_pool') || '[]'); } catch(e2) {}
+    try { pool = JSON.parse(announcementGet('dg_status_pool') || '[]'); } catch(e2) {}
     var entry = { status: status, label: label, icon: icon || '✦' };
     if (iconImg) entry.iconImg = iconImg;
     pool.push(entry);
-    NextStorage.local.setItem('dg_status_pool', JSON.stringify(pool));
+    announcementSet('dg_status_pool', JSON.stringify(pool));
     if (statusInput) statusInput.value = '';
     if (labelInput) labelInput.value = '';
     if (iconInput) { iconInput.value = ''; delete iconInput.dataset.imgSrc; }
@@ -1510,9 +1520,9 @@ window.handleAnnStatusIconUpload = function(input) {
 
 window.removeAnnStatusPoolItem = function(idx) {
     var pool = [];
-    try { pool = JSON.parse(NextStorage.local.getItem('dg_status_pool') || '[]'); } catch(e2) {}
+    try { pool = JSON.parse(announcementGet('dg_status_pool') || '[]'); } catch(e2) {}
     pool.splice(idx, 1);
-    NextStorage.local.setItem('dg_status_pool', JSON.stringify(pool));
+    announcementSet('dg_status_pool', JSON.stringify(pool));
     renderAnnStatusPool();
 };
 
@@ -1525,7 +1535,7 @@ document.addEventListener('DOMContentLoaded', function() {
             var reader = new FileReader();
             reader.onload = function(ev) {
                 var data = ev.target.result;
-                NextStorage.local.setItem('dg_header_bg', data);
+                announcementSet('dg_header_bg', data);
                 var bgEl = document.getElementById('dg-header-band-bg');
                 if (bgEl) { bgEl.style.backgroundImage = 'url(' + data + ')'; bgEl.classList.add('has-img'); }
             };
@@ -1541,9 +1551,9 @@ document.addEventListener('DOMContentLoaded', function() {
             reader.onload = function(ev) {
                 var data = ev.target.result;
                 var customData = {};
-                try { customData = JSON.parse(NextStorage.local.getItem('dg_custom_data') || '{}'); } catch(ex) {}
+                try { customData = JSON.parse(announcementGet('dg_custom_data') || '{}'); } catch(ex) {}
                 customData.decoImg = data;
-                NextStorage.local.setItem('dg_custom_data', JSON.stringify(customData));
+                announcementSet('dg_custom_data', JSON.stringify(customData));
                 var prev = document.getElementById('dg-deco-preview');
                 var prevImg = document.getElementById('dg-deco-preview-img');
                 if (prev && prevImg) { prevImg.src = data; prev.style.display = 'block'; }
@@ -1631,13 +1641,21 @@ window.closeDailyGreeting = function() {
                 modal.style.transition = '';
             }, 320);
         }
-        NextStorage.local.setItem('dailyGreetingShown', new Date().toDateString());
+        announcementSet('dailyGreetingShown', new Date().toDateString());
     } catch(e) {}
 };
 
-window.reopenDailyGreeting = function() {
+window.reopenDailyGreeting = async function() {
     try {
+        var sessionId = String(window.SESSION_ID || '');
+        var conversation = window.NextModel && window.NextModel.conversation(sessionId);
+        var friendId = conversation && conversation.type === 'direct' ? conversation.friendIds[0] : null;
+        var savedMood = window.moodData;
+        if (friendId && window.NextMood) window.moodData = await window.NextMood.read(friendId);
+        else if (window.NextModel) window.moodData = {};
+        if (String(window.SESSION_ID || '') !== sessionId) { window.moodData = savedMood; return; }
         if (typeof _buildDailyGreeting === 'function') _buildDailyGreeting();
+        window.moodData = savedMood;
         var modal = document.getElementById('daily-greeting-modal');
         if (modal) {
             modal.style.opacity = '0';
@@ -1652,7 +1670,7 @@ window.reopenDailyGreeting = function() {
 
 window.tryShowDailyGreeting = function() {
     try {
-        if (NextStorage.local.getItem('dailyGreetingShown') === new Date().toDateString()) return;
+        if (announcementGet('dailyGreetingShown') === new Date().toDateString()) return;
 
         var now = new Date();
         var todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
@@ -1665,7 +1683,7 @@ window.tryShowDailyGreeting = function() {
                 _buildDailyGreeting();
                 var modal = document.getElementById('daily-greeting-modal');
                 if (modal) modal.classList.remove('hidden');
-                NextStorage.local.setItem('dailyGreetingShown', new Date().toDateString());
+                announcementSet('dailyGreetingShown', new Date().toDateString());
             }, 45000);
             return;
         }
