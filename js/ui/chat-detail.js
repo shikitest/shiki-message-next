@@ -67,14 +67,14 @@
             image.decoding = 'async';
             target.appendChild(image);
         } else {
-            target.appendChild(make('i', 'fas ' + (isGroup() ? 'fa-users' : 'fa-user')));
+            target.appendChild(global.ShikiAppShell.createIcon(isGroup() ? 'friends' : 'user'));
         }
     }
 
     function renderGroupMembers(members) {
         const section = page && page.querySelector('.shiki-detail-members');
         if (!section) return;
-        section.hidden = !isGroup();
+        section.hidden = !isGroup() || page.dataset.mode === 'settings';
         const list = section.querySelector('.shiki-detail-member-list');
         list.replaceChildren();
         (Array.isArray(members) ? members : []).forEach(function (member) {
@@ -85,7 +85,7 @@
                 image.src = member.avatar;
                 image.alt = '';
                 avatar.appendChild(image);
-            } else avatar.appendChild(make('i', 'fas fa-user'));
+            } else avatar.appendChild(global.ShikiAppShell.createIcon('user'));
             row.append(avatar, make('span', '', member.name || '群成员'));
             list.appendChild(row);
         });
@@ -99,10 +99,11 @@
         const meta = currentMeta();
         const group = isGroup();
         const friendRow = page.querySelector('[data-detail-action="friend-profile"]');
-        if (friendRow) friendRow.hidden = group;
+        const settingsMode = page.dataset.mode === 'settings';
+        if (friendRow) friendRow.hidden = group || settingsMode;
         const title = session.name || (context.getPartnerName ? context.getPartnerName() : '未命名会话');
         const members = group && context.getGroupMembers ? context.getGroupMembers() : [];
-        const subtitle = group ? ((Array.isArray(members) ? members.length : 0) + ' 位成员') : (context.getPartnerStatus ? context.getPartnerStatus() : '在线');
+        const subtitle = group ? ((Array.isArray(members) ? members.length : 0) + ' 位成员') : (context.getPartnerStatus ? context.getPartnerStatus() : '');
         chatBar.querySelector('.shiki-chat-title').textContent = title;
         chatBar.querySelector('.shiki-chat-subtitle').textContent = subtitle;
         page.querySelector('.shiki-detail-name').textContent = title;
@@ -110,9 +111,9 @@
         const pinLabel = page.querySelector('[data-detail-action="pin"] span');
         if (pinLabel) pinLabel.textContent = meta.pinned ? '取消置顶聊天' : '置顶聊天';
         const groupRow = page.querySelector('[data-detail-action="group"]');
-        if (groupRow) groupRow.hidden = !group;
+        if (groupRow) groupRow.hidden = !group || settingsMode;
         const renameRow = page.querySelector('[data-detail-action="rename-group"]');
-        if (renameRow) renameRow.hidden = !group;
+        if (renameRow) renameRow.hidden = !group || settingsMode;
         renderGroupMembers(members);
         const url = await avatarUrl();
         if (version !== refreshVersion || String((currentSession() || {}).id || '') !== String(session.id || '')) return;
@@ -124,14 +125,21 @@
         chatBar = make('header', 'shiki-chat-topbar');
         chatBar.id = 'shiki-chat-topbar';
         chatBar.innerHTML = [
-            '<button type="button" data-chat-action="back" aria-label="返回会话列表"><i class="fas fa-chevron-left"></i></button>',
+            '<button type="button" data-chat-action="back" aria-label="返回会话列表"></button>',
             '<span class="shiki-chat-avatar"></span>',
             '<span class="shiki-chat-heading"><strong class="shiki-chat-title"></strong><small class="shiki-chat-subtitle"></small></span>',
-            '<button type="button" data-chat-action="detail" aria-label="聊天详情"><i class="fas fa-ellipsis"></i></button>'
+            '<button type="button" data-chat-action="search" aria-label="搜索聊天"></button>',
+            '<button type="button" data-chat-action="detail" aria-label="聊天详情"></button>',
+            '<button type="button" data-chat-action="settings" aria-label="聊天设置"></button>'
         ].join('');
+        [['back', 'back'], ['search', 'search'], ['detail', 'menu'], ['settings', 'settings']].forEach(function (entry) {
+            chatBar.querySelector('[data-chat-action="' + entry[0] + '"]').appendChild(global.ShikiAppShell.createIcon(entry[1]));
+        });
         document.body.appendChild(chatBar);
         chatBar.addEventListener('click', function (event) {
             if (event.target.closest('[data-chat-action="back"]')) return context.backToConversations && context.backToConversations();
+            if (event.target.closest('[data-chat-action="search"]')) return global.MessageSearch && global.MessageSearch.open();
+            if (event.target.closest('[data-chat-action="settings"]')) return open('settings');
             if (event.target.closest('[data-chat-action="detail"]')) return open();
         });
     }
@@ -153,15 +161,15 @@
         back.type = 'button';
         back.dataset.detailAction = 'close';
         back.setAttribute('aria-label', '返回');
-        back.innerHTML = '<i class="fas fa-chevron-left"></i>';
-        header.append(back, make('h2', '', '聊天详情'), make('span'));
+        back.appendChild(global.ShikiAppShell.createIcon('close'));
+        header.append(make('span'), make('h2', '', '聊天详情'), back);
         const profile = make('div', 'shiki-detail-profile');
         profile.innerHTML = '<span class="shiki-detail-avatar"></span><strong class="shiki-detail-name"></strong><small class="shiki-detail-type"></small>';
         const avatarActions = make('div', 'shiki-detail-avatar-actions');
         avatarActions.append(row('avatar', 'fa-camera', '更换会话头像'), row('avatar-reset', 'fa-rotate-left', '恢复默认头像'));
         const actions = make('div', 'shiki-detail-actions');
         actions.append(
-            row('friend-profile', 'fa-user', '好友资料与字卡'),
+            row('friend-profile', 'fa-user', '好友资料'),
             row('rename-group', 'fa-pen', '修改群聊名称'),
             row('search', 'fa-search', '查找聊天内容'),
             row('date', 'fa-calendar-days', '按日期查找'),
@@ -184,8 +192,19 @@
         avatarInput.addEventListener('change', handleAvatar);
     }
 
-    function open() {
+    function open(mode) {
+        const settingsMode = mode === 'settings';
+        page.dataset.mode = settingsMode ? 'settings' : 'detail';
         refresh();
+        page.querySelector('.shiki-record-header h2').textContent = settingsMode ? '设置' : '聊天详情';
+        page.querySelector('.shiki-detail-profile').hidden = settingsMode;
+        page.querySelector('.shiki-detail-avatar-actions').hidden = settingsMode;
+        page.querySelectorAll('[data-detail-action]').forEach(function (item) {
+            const action = item.dataset.detailAction;
+            if (['friend-profile', 'rename-group', 'group'].includes(action)) item.hidden = settingsMode || (action === 'friend-profile' ? isGroup() : !isGroup());
+        });
+        const members = page.querySelector('.shiki-detail-members');
+        members.hidden = settingsMode || !isGroup();
         page.hidden = false;
         document.body.classList.add('shiki-record-page-active');
     }
@@ -235,7 +254,7 @@
         }
         const session = currentSession();
         if (!session) return;
-        if (action === 'friend-profile' && global.NextUI) { close(); return global.NextUI.openFriend(session.friendIds[0]); }
+        if (action === 'friend-profile' && global.NextUI) { close(); return global.NextUI.openProfile(session.friendIds[0]); }
         if (action === 'delete-conversation' && global.NextUI) { close(); return global.NextUI.deleteConversation(session.id); }
         if (action === 'group' && global.NextUI) { close(); return global.NextUI.openGroup(session.id); }
         if (action === 'avatar-reset' && global.NextUI && session.type === 'direct') { close(); return global.NextUI.openFriend(session.friendIds[0]); }
@@ -273,6 +292,7 @@
         }
         if (action === 'background') {
             close();
+            if (global.NextUI) return global.NextUI.openBackground();
             return context.openLegacy && context.openLegacy('background-input');
         }
         if (action === 'group') {

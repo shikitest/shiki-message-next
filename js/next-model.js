@@ -5,6 +5,24 @@
     let queue = Promise.resolve();
     const copy = value => JSON.parse(JSON.stringify(value));
     const uid = () => global.crypto.randomUUID();
+    const preferenceKeys = ['allowReadNoReply', 'readNoReplyChance', 'replyDelayMin', 'replyDelayMax', 'textGenerationMode', 'typingIndicatorEnabled', 'readReceiptsEnabled', 'replyEnabled', 'autoSendEnabled', 'autoSendInterval', 'autoSendFrequency', 'usePreviewProbability'];
+    function preferences(input) {
+        const output = {};
+        for (const key of preferenceKeys) {
+            const value = input && input[key];
+            if (value === undefined) continue;
+            if (['allowReadNoReply', 'typingIndicatorEnabled', 'readReceiptsEnabled', 'replyEnabled', 'autoSendEnabled', 'usePreviewProbability'].includes(key)) {
+                if (typeof value !== 'boolean') throw new Error('回复开关格式无效');
+            } else if (key === 'textGenerationMode') {
+                if (!['card', 'ime', 'mixed'].includes(value)) throw new Error('生成模式无效');
+            } else if (key === 'autoSendFrequency') {
+                if (!['low', 'normal', 'high'].includes(value)) throw new Error('主动发言频率无效');
+            } else if (!Number.isFinite(value) || value < 0 || (key === 'readNoReplyChance' ? value > 1 : value > 3600000)) throw new Error('回复参数无效');
+            output[key] = value;
+        }
+        if (output.replyDelayMin !== undefined && output.replyDelayMax !== undefined && output.replyDelayMin > output.replyDelayMax) throw new Error('最短延迟不能大于最长延迟');
+        return output;
+    }
     function text(value, max) { return String(value || '').trim().slice(0, max); }
     function validate(input) {
         if (!input || input.version !== 1 || !Array.isArray(input.friends) || !Array.isArray(input.conversations)) throw new Error('好友数据格式不正确');
@@ -18,7 +36,7 @@
             const avatar = typeof f.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(f.avatar) && f.avatar.length <= 250000 ? f.avatar : null;
             clean.friends.push({ id: f.id, name: text(f.name, 40), avatar, cards: f.cards.map(c => text(c, 2000)).filter(Boolean), deleted: f.deleted === true,
                 replyProbability: Number.isFinite(f.replyProbability) ? Math.min(1, Math.max(0, f.replyProbability)) : 0.8,
-                createdAt: Number(f.createdAt) || Date.now() });
+                replySettings: preferences(f.replySettings), createdAt: Number(f.createdAt) || Date.now() });
         }
         const sessions = new Set(); const direct = new Set();
         for (const c of input.conversations) {
@@ -51,7 +69,7 @@
     function friend(id) { return copy(state.friends.find(f => f.id === id) || null); }
     function conversation(id) { return copy(state.conversations.find(c => c.id === id) || null); }
     function members(id) { const c = conversation(id); return c ? c.friendIds.map(friend).filter(Boolean) : []; }
-    global.NextModel = Object.freeze({ key: KEY, load, validate, snapshot: () => copy(state), friend, conversation, members,
+    global.NextModel = Object.freeze({ key: KEY, load, validate, preferences, snapshot: () => copy(state), friend, conversation, members,
         flush: () => queue,
         replace: input => mutate(next => { const clean = validate(input); Object.assign(next, clean); return clean; }),
         saveFriend: input => mutate(next => {

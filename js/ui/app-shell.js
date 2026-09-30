@@ -59,6 +59,70 @@
         return node;
     }
 
+    const iconPaths = {
+        back: ['m15 4-8 8 8 8'],
+        close: ['m5 5 14 14', 'M19 5 5 19'],
+        plus: ['M12 3v18', 'M3 12h18'],
+        camera: ['M3 7h4l2-3h6l2 3h4v14H3z', 'M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z'],
+        send: ['m3 3 19 9-19 9 4-9z', 'M7 12h15'],
+        menu: ['M3 5h18', 'M3 12h18', 'M3 19h18'],
+        up: ['m5 15 7-7 7 7'],
+        down: ['m5 9 7 7 7-7'],
+        reply: ['m9 5-6 6 6 6', 'M3 11h10a7 7 0 0 1 7 7'],
+        star: ['m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z'],
+        trash: ['M3 6h18', 'M9 6V3h6v3', 'm5 6 1 15h12l1-15', 'M10 10v7', 'M14 10v7'],
+        'list-check': ['M4 6h11', 'M4 12h9', 'M4 18h7', 'm16 15 2 2 4-5'],
+        photo: ['M4 5h16v14H4z', 'M7 15l3-3 3 3 2-2 4 4', 'M9 9h.01'],
+        calendar: ['M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z', 'M8 2v4', 'M16 2v4', 'M3 9h18', 'M9 13h6'],
+        'chat-plus': ['M20 11.5a7.5 7.5 0 0 1-8 7.5 8.2 8.2 0 0 1-3.2-.6L4 20l1.4-3.6A7.2 7.2 0 0 1 4 12c0-4.1 3.6-7.5 8-7.5s8 3.1 8 7Z', 'M19 16v6', 'M16 19h6'],
+        bookmark: ['M6 3h12v18l-6-4-6 4z'],
+        bell: ['M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9', 'M10 21h4'],
+        'user-plus': ['M15 20v-1.5a4.5 4.5 0 0 0-4.5-4.5h-3A4.5 4.5 0 0 0 3 18.5V20', 'M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z', 'M19 8v6', 'M16 11h6'],
+        user: ['M20 21v-1.5a6.5 6.5 0 0 0-6.5-6.5h-3A6.5 6.5 0 0 0 4 19.5V21', 'M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z'],
+        smile: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z', 'M8 14s1.5 2 4 2 4-2 4-2', 'M9 9h.01', 'M15 9h.01'],
+        brush: ['M14 4 20 10', 'm13 5 6 6', 'm12 6-7 7', 'M5 13 3 19l6-2', 'M3 21h18'],
+        shield: ['M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z', 'm9 12 2 2 4-4'],
+        gamepad: ['M6 8h12a4 4 0 0 1 3.8 5l-1.2 4A2.5 2.5 0 0 1 16 18l-2-2h-4l-2 2a2.5 2.5 0 0 1-4.6-1l-1.2-4A4 4 0 0 1 6 8Z', 'M7 11v4', 'M5 13h4', 'M16 12h.01', 'M18 14h.01'],
+        search: ['M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z', 'm17 17 4 4'],
+        scan: ['M4 8V5a1 1 0 0 1 1-1h3', 'M16 4h3a1 1 0 0 1 1 1v3', 'M20 16v3a1 1 0 0 1-1 1h-3', 'M8 20H5a1 1 0 0 1-1-1v-3', 'M4 12h16'],
+        chevron: ['m8 10 4 4 4-4'],
+        home: ['m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z'],
+        chat: ['M21 11.5a8.4 8.4 0 0 1-8.8 8.5 9 9 0 0 1-3.8-.8L3 21l1.9-4.8A8 8 0 0 1 3 11.5C3 7 7.1 3.5 12.2 3.5S21 7 21 11.5Z'],
+        friends: ['M16 20v-1.2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20', 'M9.5 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z', 'M17 11a3 3 0 1 0-1-5.8', 'M17 15h4', 'M19 13v4'],
+        more: ['M4 4h6v6H4z', 'M14 4h6v6h-6z', 'M4 14h6v6H4z', 'M14 14h6v6h-6z'],
+        settings: ['M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z', 'm19.4 15 .1.1a1.8 1.8 0 1 1-2.5 2.5l-.1-.1a1.8 1.8 0 0 0-3 .9v.2a1.8 1.8 0 1 1-3.6 0v-.2a1.8 1.8 0 0 0-3-.9l-.1.1a1.8 1.8 0 1 1-2.5-2.5l.1-.1a1.8 1.8 0 0 0-.9-3h-.2a1.8 1.8 0 1 1 0-3.6h.2a1.8 1.8 0 0 0 .9-3l-.1-.1a1.8 1.8 0 1 1 2.5-2.5l.1.1a1.8 1.8 0 0 0 3-.9v-.2a1.8 1.8 0 1 1 3.6 0v.2a1.8 1.8 0 0 0 3 .9l.1-.1a1.8 1.8 0 1 1 2.5 2.5l-.1.1a1.8 1.8 0 0 0 .9 3h.2a1.8 1.8 0 1 1 0 3.6h-.2a1.8 1.8 0 0 0-.9 3Z']
+    };
+
+    function svgIcon(name, filled) {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.setAttribute('viewBox', '0 0 24 24');
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        svg.setAttribute('fill', 'none'); svg.setAttribute('stroke', 'currentColor'); svg.setAttribute('stroke-width', '1.8'); svg.setAttribute('stroke-linecap', 'round'); svg.setAttribute('stroke-linejoin', 'round');
+        if (filled) svg.classList.add('is-current-icon');
+        svg.classList.add('shiki-line-icon');
+        if (name === 'chat' && filled) {
+            svg.setAttribute('viewBox', '0 0 24 24');
+            const body = document.createElementNS(svg.namespaceURI, 'path');
+            body.setAttribute('d', 'M21 11.5a8.4 8.4 0 0 1-8.8 8.5 9 9 0 0 1-3.8-.8L3 21l1.9-4.8A8 8 0 0 1 3 11.5C3 7 7.1 3.5 12.2 3.5S21 7 21 11.5Z');
+            body.setAttribute('fill', 'currentColor'); body.setAttribute('stroke', 'none'); svg.appendChild(body);
+            [8, 12, 16].forEach(x => { const dot = document.createElementNS(svg.namespaceURI, 'circle'); dot.setAttribute('cx', x); dot.setAttribute('cy', '12'); dot.setAttribute('r', '1'); dot.setAttribute('fill', '#fff'); svg.appendChild(dot); });
+            return svg;
+        }
+        (iconPaths[name] || []).forEach(function (d) {
+            const path = document.createElementNS(svg.namespaceURI, 'path'); path.setAttribute('d', d); svg.appendChild(path);
+        });
+        return svg;
+    }
+
+    function svgButton(label, action, iconName, id, className) {
+        const node = el('button', 'shiki-shell-icon-button' + (className ? ' ' + className : ''));
+        node.type = 'button'; node.dataset.action = action; node.setAttribute('aria-label', label); node.title = label;
+        if (id) node.dataset.id = id;
+        node.appendChild(svgIcon(iconName, false));
+        return node;
+    }
+
     function buildTopBar(title, withAdd) {
         const bar = el('header', 'shiki-shell-topbar');
         bar.appendChild(el('h1', '', title));
@@ -73,13 +137,18 @@
     function buildConversationsView() {
         const view = el('section', 'shiki-shell-view');
         view.dataset.view = 'conversations';
-        view.appendChild(buildTopBar('聊天', true));
+        const topbar = el('header', 'shiki-shell-topbar shiki-chat-list-topbar');
+        const title = el('h1', 'shiki-chat-list-title', '聊天');
+        const tools = el('div', 'shiki-header-tools');
+        tools.append(svgButton('编辑聊天列表', 'shell-tool', 'list-check', 'edit-list'), svgButton('媒体', 'shell-tool', 'photo', 'media'), svgButton('日历', 'shell-tool', 'calendar', 'calendar'), svgButton('发起聊天', 'open-create', 'chat-plus'));
+        topbar.append(title, tools); view.appendChild(topbar);
         const searchWrap = el('div', 'shiki-conversation-search');
-        searchWrap.appendChild(el('i', 'fas fa-search'));
+        searchWrap.appendChild(svgIcon('search'));
         const search = el('input');
         search.type = 'search';
         search.id = 'shiki-conversation-search-input';
-        search.placeholder = '搜索会话名称';
+        search.placeholder = '搜索';
+        search.setAttribute('aria-label', '搜索会话');
         search.autocomplete = 'off';
         searchWrap.appendChild(search);
         view.appendChild(searchWrap);
@@ -94,12 +163,8 @@
         view.dataset.view = name;
         view.hidden = true;
         view.appendChild(buildTopBar(title, false));
-        const intro = el('p', 'shiki-hub-intro', name === 'more'
-            ? '常用功能与未来扩展入口'
-            : '原有设置和数据保持不变');
-        view.appendChild(intro);
         const grid = el('div', name === 'more' ? 'shiki-feature-grid' : 'shiki-settings-list');
-        entries.forEach(function (entry) {
+        entries.filter(entry => !(name === 'more' && entry.id === 'watch-together')).forEach(function (entry) {
             const item = button(entry.title, name === 'more' ? 'feature' : 'setting', entry.icon);
             item.dataset.id = entry.id;
             if (entry.pending) item.appendChild(el('small', 'shiki-pending-badge', '即将开放'));
@@ -112,12 +177,13 @@
     function buildNavigation() {
         const nav = el('nav', 'shiki-shell-nav');
         [
-            ['conversations', '聊天', 'fa-comment-dots'],
-            ['friends', '好友', 'fa-user-group'],
-            ['more', '更多', 'fa-border-all'],
-            ['settings', '设置', 'fa-gear']
+            ['conversations', '聊天', 'chat'],
+            ['friends', '好友', 'friends'],
+            ['more', '更多', 'more'],
+            ['settings', '设置', 'settings']
         ].forEach(function (item) {
-            const tab = button(item[1], 'navigate', item[2]);
+            const tab = el('button', 'shiki-shell-button shiki-nav-tab'); tab.type = 'button'; tab.dataset.action = 'navigate'; tab.appendChild(svgIcon(item[2], item[0] === 'conversations'));
+            tab.appendChild(el('span', '', item[1]));
             tab.dataset.view = item[0];
             if (item[0] === 'conversations') tab.classList.add('active');
             nav.appendChild(tab);
@@ -338,6 +404,7 @@
     }
 
     function showPrimary(viewName) {
+        if (global.NextRuntime && document.body.classList.contains('next-switching')) return;
         if (global.NextUI) global.NextUI.beforeNavigate();
         if (!root) return;
         if (document.body.classList.contains('shiki-chat-view-active') && typeof global.saveDataForSession === 'function') {
@@ -357,6 +424,9 @@
         });
         root.querySelectorAll('.shiki-shell-nav [data-view]').forEach(function (tab) {
             tab.classList.toggle('active', tab.dataset.view === activeView);
+            const iconNames = { conversations: 'chat', friends: 'friends', more: 'more', settings: 'settings' };
+            const icon = tab.querySelector('.shiki-line-icon');
+            if (icon) icon.replaceWith(svgIcon(iconNames[tab.dataset.view], tab.dataset.view === activeView));
         });
         if (activeView === 'conversations') renderConversations(root.querySelector('#shiki-conversation-search-input').value);
     }
@@ -610,6 +680,15 @@
         }
         if (action === 'create-conversation') return createConversation();
         if (action === 'open-session') return openSession(actionNode.dataset.sessionId);
+        if (action === 'shell-tool') {
+            const id = actionNode.dataset.id;
+            if (id === 'edit-list' && global.NextUI) return global.NextUI.openListEditor();
+            if (id === 'media') return runFeature('photo-album');
+            if (id === 'calendar') {
+                if (global.MessageDateSearch && typeof global.MessageDateSearch.open === 'function') return global.MessageDateSearch.open();
+                return notify('日期查找暂不可用', 'warning');
+            }
+        }
         if (action === 'toggle-pin') {
             event.stopPropagation();
             const meta = global.ConversationMetaStore.get(actionNode.dataset.sessionId);
@@ -685,6 +764,7 @@
         root.addEventListener('keydown', handleKeydown);
         initialized = true;
         const sharedContext = {
+            getCurrentSessionId: context.getCurrentSessionId,
             getMessages: context.getMessages,
             locateMessageById: context.locateMessageById,
             getMyName: context.getMyName,
@@ -743,6 +823,8 @@
         noteMessageSaved: noteMessageSaved,
         previewForMessage: previewForMessage,
         createConversationTransaction: createConversationTransaction,
+        createIcon: svgIcon,
+        openFeature: runFeature,
         getDebugSnapshot: function () {
             return {
                 initialized: initialized,

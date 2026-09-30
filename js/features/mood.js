@@ -230,6 +230,7 @@ let customMoodSelectedColor = '#FFD93D';
 const CUSTOM_MOOD_COLORS = ['#FFD93D','#FF6B6B','#6BCB77','#4D96FF','#8D9EFF','#FF9A8B','#A8D8EA','#E0C3FC','#B8A9C9','#2C3E50'];
 
 async function initMoodData() {
+    if (window.NextMood) return;
     const savedMoods = await localforage.getItem(getStorageKey('moodCalendar'));
     if (savedMoods) { moodData = savedMoods; }
     const savedCustomMoods = await localforage.getItem(getStorageKey('customMoodOptions'));
@@ -241,6 +242,7 @@ async function initMoodData() {
     checkPartnerDailyMood();
 }
 function checkPartnerDailyMood() {
+    if (window.NextMood) return;
     const today = new Date();
     const dateStr = formatDateStr(today);
 
@@ -273,19 +275,21 @@ function checkPartnerDailyMood() {
     }
 }
 function saveMoodData() {
-    localforage.setItem(getStorageKey('moodCalendar'), moodData);
+    const save = window.NextMood ? NextMood.save('moodCalendar', moodData) : localforage.setItem(getStorageKey('moodCalendar'), moodData);
+    save.catch(error => { if (window.NextRuntime) NextRuntime.report(error); });
     window.moodData = moodData;
     var moodModal = document.getElementById('mood-modal');
     if (moodModal && !moodModal.classList.contains('hidden') && moodModal.style.display !== 'none') {
         renderMoodCalendar();
     }
+    return save;
 }
 function saveCustomMoodOptions() {
-    localforage.setItem(getStorageKey('customMoodOptions'), customMoodOptions);
+    (window.NextMood ? NextMood.save('customMoodOptions', customMoodOptions) : localforage.setItem(getStorageKey('customMoodOptions'), customMoodOptions)).catch(error => { if (window.NextRuntime) NextRuntime.report(error); });
 }
 
 function saveMoodTrash() {
-    localforage.setItem(getStorageKey('moodTrash'), moodTrash).catch(() => {});
+    (window.NextMood ? NextMood.save('moodTrash', moodTrash) : localforage.setItem(getStorageKey('moodTrash'), moodTrash)).catch(error => { if (window.NextRuntime) NextRuntime.report(error); });
     window.moodTrash = moodTrash;
 }
 function getAllMoodOptions() {
@@ -414,7 +418,7 @@ function updateDualMoodStats(stats) {
     if (!container) return;
 
     const mName = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
-    const pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+    const pName = window.NextMood ? NextMood.friendName() : ((typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角');
 
     const myTotal = stats.me.total;
     const partnerTotal = stats.partner.total;
@@ -618,7 +622,7 @@ function renderMoodTrashList() {
         return;
     }
     const mName = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
-    const pName = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+    const pName = window.NextMood ? NextMood.friendName() : ((typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角');
     const allMoods = getAllMoodOptions();
 
     list.innerHTML = moodTrash.map(item => {
@@ -943,7 +947,7 @@ function openMoodSelector(dateStr, editTarget) {
     if (weatherInput) weatherInput.value = weatherVal;
     const weatherLabel = document.getElementById('mood-weather-label');
     if (weatherLabel) {
-        var pNameW = (typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角';
+        var pNameW = window.NextMood ? NextMood.friendName() : ((typeof settings !== 'undefined' && settings.partnerName) ? settings.partnerName : '梦角');
         var mNameW = (typeof settings !== 'undefined' && settings.myName) ? settings.myName : '我';
         if (weatherLabel.firstChild) weatherLabel.firstChild.textContent = currentMoodEditTarget === 'me' ? mNameW + '的天气\u00a0' : pNameW + '的天气\u00a0';
     }
@@ -970,7 +974,7 @@ window.tempSelectMood = function(key) {
     renderMoodOptionsGrid(key);
 }
 
-document.getElementById('confirm-mood-save').addEventListener('click', () => {
+document.getElementById('confirm-mood-save').addEventListener('click', async () => {
     if (!selectedDateStr) return;
     if (!currentMoodSelection && currentMoodPage === 1) {
         showNotification('请先选择一个心情图标', 'warning');
@@ -988,7 +992,7 @@ document.getElementById('confirm-mood-save').addEventListener('click', () => {
         moodData[selectedDateStr].partnerWeather = weatherVal.trim();
     }
 
-    saveMoodData();
+    try { await saveMoodData(); } catch (error) { return; }
     closeMoodOverlay();
     showNotification('记录已保存 ✦', 'success');
     if (typeof playSound === 'function') playSound('mood');

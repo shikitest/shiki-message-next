@@ -11,6 +11,46 @@
     let initialized = false;
     let searches = 0;
     let activeCategory = 'all';
+    let inlineMode = false, matches = [], selectedMatch = -1, locateVersion = 0, searchSession = null;
+    let priorScroll = 0, priorWindow = null;
+    const sessionId = () => String(context && context.getCurrentSessionId ? context.getCurrentSessionId() : '');
+
+    function clearHighlights() {
+        document.querySelectorAll('#chat-container mark.next-search-match').forEach(mark => mark.replaceWith(document.createTextNode(mark.textContent)));
+    }
+    async function locateMatch(index) {
+        if (!matches.length) return;
+        selectedMatch = Math.max(0, Math.min(matches.length - 1, index));
+        const version = ++locateVersion;
+        const target = matches[selectedMatch].message;
+        try {
+            if (context.locateMessageById) await context.locateMessageById(target.id);
+            if (version !== locateVersion || overlay.hidden || sessionId() !== searchSession) return;
+            clearHighlights();
+            const row = Array.from(document.querySelectorAll('#chat-container .message-wrapper')).find(n => String(n.dataset.id) === String(target.id));
+            const q = input.value.trim();
+            if (row && q) {
+                const nodes = [], walker = document.createTreeWalker(row.querySelector('.message'), NodeFilter.SHOW_TEXT);
+                while (walker.nextNode()) nodes.push(walker.currentNode);
+                nodes.forEach(node => {
+                    const text = node.textContent, lower = normalize(text), query = normalize(q);
+                    let start = 0, at = lower.indexOf(query); const fragment = document.createDocumentFragment();
+                    while (at >= 0) {
+                        fragment.append(document.createTextNode(text.slice(start, at)));
+                        fragment.append(make('mark', 'next-search-match', text.slice(at, at + q.length)));
+                        start = at + q.length; at = lower.indexOf(query, start);
+                    }
+                    if (start) { fragment.append(document.createTextNode(text.slice(start))); node.replaceWith(fragment); }
+                });
+            }
+            updateNavigation();
+        } catch (error) { if (global.NextRuntime) global.NextRuntime.report(error); }
+    }
+    function updateNavigation() {
+        overlay.querySelector('.next-search-position').textContent = matches.length ? (selectedMatch + 1) + '/' + matches.length + (matches.length === RESULT_LIMIT ? '+' : '') : (input.value.trim() ? '没有结果' : '');
+        overlay.querySelector('[data-search-step="previous"]').disabled = selectedMatch <= 0;
+        overlay.querySelector('[data-search-step="next"]').disabled = selectedMatch >= matches.length - 1 || !matches.length;
+    }
 
     const categories = [
         ['all', '全部'], ['image', '图片'], ['video', '视频'],
@@ -120,22 +160,29 @@
 
     function render() {
         clearTimeout(timer);
+        ++locateVersion;
         const query = input.value.trim();
         results.replaceChildren();
+        if (inlineMode) {
+            matches = query ? searchMessages(source, query, RESULT_LIMIT, 'all') : [];
+            selectedMatch = matches.length - 1; clearHighlights(); updateNavigation();
+            if (matches.length) locateMatch(selectedMatch);
+            return;
+        }
         if (!query && activeCategory === 'all') {
             results.appendChild(make('div', 'shiki-record-empty', '输入文字搜索当前会话'));
             return;
         }
         searches += 1;
-        const matches = searchMessages(source, query, RESULT_LIMIT, activeCategory);
-        const count = make('p', 'shiki-search-count', '找到 ' + matches.length + (matches.length === RESULT_LIMIT ? '+' : '') + ' 条结果');
+        const mediaMatches = searchMessages(source, query, RESULT_LIMIT, activeCategory);
+        const count = make('p', 'shiki-search-count', '找到 ' + mediaMatches.length + (mediaMatches.length === RESULT_LIMIT ? '+' : '') + ' 条结果');
         results.appendChild(count);
-        if (!matches.length) {
+        if (!mediaMatches.length) {
             results.appendChild(make('div', 'shiki-record-empty', '没有匹配的聊天记录'));
             return;
         }
         const fragment = document.createDocumentFragment();
-        matches.forEach(function (result) {
+        mediaMatches.forEach(function (result) {
             const item = make('article', 'shiki-message-search-result');
             const meta = make('span', 'shiki-search-result-meta');
             meta.append(make('strong', '', senderName(result.message)), make('time', '', formatTime(result.message.timestamp || result.message.createdAt)));
@@ -200,12 +247,26 @@
         document.body.appendChild(overlay);
         input = overlay.querySelector('#shiki-message-search-input');
         results = overlay.querySelector('#shiki-message-search-results');
+        const nav = make('div', 'next-search-navigation');
+        [['previous', 'up', '上一条结果'], ['next', 'down', '下一条结果'], ['date', 'calendar', '按日期查找']].forEach(function (entry) {
+            const button = make('button'); button.type = 'button'; button.dataset.searchStep = entry[0]; button.setAttribute('aria-label', entry[2]);
+            // AppShell initializes after this module is loaded, before build runs.
+            button.append(global.ShikiAppShell.createIcon(entry[1])); nav.append(button);
+            if (entry[0] === 'next') nav.append(make('span', 'next-search-position'));
+        });
+        overlay.append(nav);
+        const closeButton = overlay.querySelector('[data-search-action="close"]'); closeButton.replaceChildren(global.ShikiAppShell.createIcon('close')); closeButton.setAttribute('aria-label', '关闭搜索');
         input.addEventListener('input', function () {
             clearTimeout(timer);
             timer = setTimeout(render, 180);
         });
         overlay.addEventListener('click', async function (event) {
             if (event.target.closest('[data-search-action="close"]')) return close();
+            const step = event.target.closest('[data-search-step]');
+            if (step) {
+                if (step.dataset.searchStep === 'date') { close(); return global.MessageDateSearch && global.MessageDateSearch.open(); }
+                return locateMatch(selectedMatch + (step.dataset.searchStep === 'next' ? 1 : -1));
+            }
             const category = event.target.closest('[data-search-category]');
             if (category) {
                 activeCategory = category.dataset.searchCategory;
@@ -232,6 +293,15 @@
 
     function open(initialCategory) {
         source = context && context.getMessages ? context.getMessages() : [];
+        searchSession = sessionId();
+        inlineMode = !initialCategory && document.body.classList.contains('shiki-chat-view-active');
+        overlay.classList.toggle('next-inline-search', inlineMode);
+        overlay.querySelector('.shiki-record-header h2').textContent = inlineMode ? '搜索' : '聊天媒体';
+        input.placeholder = inlineMode ? '信息' : '搜索当前会话';
+        const chat = document.getElementById('chat-container'); priorScroll = chat ? chat.scrollTop : 0;
+        priorWindow = global._shikiMessageRenderWindow ? { ...global._shikiMessageRenderWindow } : null;
+        document.body.classList.toggle('next-chat-search-active', inlineMode);
+        matches = []; selectedMatch = -1; updateNavigation();
         activeCategory = categories.some(function (entry) { return entry[0] === initialCategory; }) ? initialCategory : 'all';
         overlay.querySelectorAll('[data-search-category]').forEach(function (item) {
             const active = item.dataset.searchCategory === activeCategory;
@@ -248,6 +318,14 @@
 
     function close() {
         clearTimeout(timer);
+        ++locateVersion; clearHighlights();
+        if (inlineMode && sessionId() === searchSession) {
+            global._shikiMessageRenderWindow = priorWindow;
+            if (typeof global.renderMessages === 'function') global.renderMessages(true);
+            const chat = document.getElementById('chat-container'); if (chat) chat.scrollTop = priorScroll;
+        }
+        inlineMode = false; matches = [];
+        document.body.classList.remove('next-chat-search-active');
         source = null;
         input.value = '';
         overlay.hidden = true;

@@ -370,6 +370,7 @@ const loadData = async () => {
             return false;
         }
         const results = runtimeLoad.value;
+        if (window.NextRuntime && (results[0].status === 'rejected' || results[1].status === 'rejected')) throw new Error('会话资料读取失败，请重试');
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
         const savedSettings = getVal(0);
@@ -531,10 +532,13 @@ const loadData = async () => {
             if (lsBg) {
                 applyBackground(lsBg);
                 localforage.setItem(getSessionStorageKey(targetSessionId, 'chatBackground'), lsBg);
+            } else if (window.NextRuntime) {
+                document.body.classList.remove('with-background');
+                document.documentElement.style.removeProperty('--chat-bg-image');
             }
         }
 
-        try { await initMoodData(); } catch(e) { console.warn("心情数据加载失败", e); }
+        if (!window.NextRuntime) { try { await initMoodData(); } catch(e) { console.warn("心情数据加载失败", e); } }
         try { await loadEnvelopeData(); } catch(e) { console.warn("信封数据加载失败", e); }
         if (
             String(SESSION_ID || '') !== targetSessionId ||
@@ -543,8 +547,9 @@ const loadData = async () => {
 
         displayedMessageCount = HISTORY_BATCH_SIZE;
 
+        const nextLoadGeneration = window.NextRuntime ? window.NextRuntime.generation() : null;
         setTimeout(() => {
-            if (String(SESSION_ID || '') !== targetSessionId) return;
+            if (String(SESSION_ID || '') !== targetSessionId || (window.NextRuntime && window.NextRuntime.generation() !== nextLoadGeneration)) return;
             applyAllAvatarFrames();
             manageAutoSendTimer();
             checkEnvelopeStatus();
@@ -1290,7 +1295,9 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     let messageHTML = '';
     if (msg.replyTo) {
         const repliedText = msg.replyTo.text || (msg.replyTo.image ? '🖼 图片' : '[消息]');
-        const repliedSender = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
+        const quotedFriendId = msg.replyTo.friendId || msg.replyTo.groupMemberId;
+        const quotedFriend = quotedFriendId && window.NextModel ? window.NextModel.friend(quotedFriendId) : null;
+        const repliedSender = msg.replyTo.sender === 'user' ? (settings.myName || '我') : (quotedFriend ? quotedFriend.name : (msg.replyTo.sender || settings.partnerName || '对方'));
         messageHTML += `<div class="reply-indicator" data-reply-id="${safeMessageText(msg.replyTo.id || '')}" style="cursor:pointer;" onclick="scrollToQuotedMessage(this)"><span class="reply-indicator-sender">${safeMessageText(repliedSender)}</span><span class="reply-indicator-text">${safeMessageText(repliedText)}</span></div>`;
     }
 
@@ -1632,9 +1639,15 @@ const addMessage = (message) => {
                 container.style.display = 'none';
                 return;
             }
-            const senderName = currentReplyTo.sender === 'user' ? (settings.myName || '我') : (settings.partnerName || '对方');
+            const friendId = currentReplyTo.friendId || currentReplyTo.groupMemberId;
+            const friend = friendId && window.NextModel ? window.NextModel.friend(friendId) : null;
+            const senderName = currentReplyTo.sender === 'user' ? (settings.myName || '我') : (friend ? friend.name : (currentReplyTo.sender || settings.partnerName || '对方'));
             const previewText = currentReplyTo.text ? currentReplyTo.text.slice(0, 40) : '🖼 图片';
             container.style.display = 'flex';
+            if (window.NextInput && window.NextInput.renderReplyPreview) {
+                window.NextInput.renderReplyPreview(container, senderName, previewText, friend);
+                return;
+            }
             container.innerHTML = `
                 <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:rgba(var(--accent-color-rgb),0.07);border-left:3px solid var(--accent-color);border-radius:0 8px 8px 0;width:100%;">
                     <div style="flex:1;min-width:0;">
@@ -1710,6 +1723,7 @@ if (
         };
 
         function sendMessage(textOverride = null, type = 'normal') {
+            const originSession = String(SESSION_ID), originGeneration = window.NextRuntime ? NextRuntime.generation() : null;
             const text = textOverride || DOMElements.messageInput.value.trim();
             const imageFile = DOMElements.imageInput.files[0];
             if (!text && !imageFile && type === 'normal') return;
@@ -1740,6 +1754,7 @@ if (
             }
 
             const createMessage = (imgSrc = null) => {
+                if (window.NextRuntime && (originSession !== String(SESSION_ID) || originGeneration !== NextRuntime.generation())) return showNotification('会话已切换，请回到原聊天重新发送附件', 'info');
                 const messageData = {
                     id: Date.now(),
                     sender: 'user',
@@ -1759,7 +1774,9 @@ if (
                 currentReplyTo = null;
                 updateReplyPreview();
 
-if (!isBatchMode && type === 'normal') {
+if (!isBatchMode && type === 'normal' && window.NextRuntime) {
+    window.NextRuntime.userSent();
+} else if (!isBatchMode && type === 'normal') {
     const delayRange = settings.replyDelayMax - settings.replyDelayMin;
     const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
 
@@ -1879,9 +1896,12 @@ if (!isBatchMode && type === 'normal') {
 
         function sendBatchMessages() {
             if (batchMessages.length === 0) return;
+            const batchSession = String(SESSION_ID), batchGeneration = window.NextRuntime ? NextRuntime.generation() : null;
+            const batchSize = batchMessages.length;
             showNotification(`正在发送 ${batchMessages.length} 条消息...`, 'info', 2000);
             batchMessages.forEach((msg, index) => {
                 setTimeout(() => {
+                    if (window.NextRuntime && (String(SESSION_ID) !== batchSession || NextRuntime.generation() !== batchGeneration)) return;
                     addMessage({
                         id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal'
                     });
@@ -1890,7 +1910,10 @@ if (!isBatchMode && type === 'normal') {
             });
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
             const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-            setTimeout(simulateReply, batchMessages.length * 300 + randomDelay);
+            setTimeout(() => {
+                if (window.NextRuntime) { if (String(SESSION_ID) === batchSession && NextRuntime.generation() === batchGeneration) NextRuntime.userSent(); }
+                else simulateReply();
+            }, batchSize * 300 + (window.NextRuntime ? 0 : randomDelay));
             isBatchMode = false; batchMessages = [];
             DOMElements.batchBtn.classList.remove('active'); DOMElements.batchPreview.style.display = 'none';
             const placeholder = "";
@@ -1927,9 +1950,9 @@ if (!isBatchMode && type === 'normal') {
                 : 'card';
         }
 
-        function chooseReplyText(replyPool) {
+        function chooseReplyText(replyPool, replySettings = settings) {
             const mode = normalizeTextGenerationMode(
-                settings.textGenerationMode
+                replySettings.textGenerationMode
             );
             const selectedSource = mode === 'mixed'
                 ? (Math.random() < 0.5 ? 'card' : 'ime')

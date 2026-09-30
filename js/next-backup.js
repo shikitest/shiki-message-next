@@ -5,6 +5,30 @@
     const suffixes = ['chatMessages', 'chatSettings', 'draft', 'showPartnerNameInChat'];
     const GLOBAL_KEY = 'SHIKI_NEXT_globalSettingsV1';
     const jsonCopy = input => JSON.parse(JSON.stringify(input));
+    const moodSuffixes = ['moodCalendar', 'customMoodOptions'];
+    const moodKey = (id, suffix) => 'SHIKI_NEXT_friend:' + id + ':' + suffix;
+    function moodCalendar(input) {
+        if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).length > 15000) throw new Error('心情日历格式无效');
+        const result = {};
+        for (const [date, entry] of Object.entries(input)) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('心情日期或记录无效');
+            result[date] = {};
+            for (const field of ['partner', 'user', 'partnerNote', 'note', 'partnerWeather', 'myWeather']) {
+                if (entry[field] === undefined) continue;
+                if (typeof entry[field] !== 'string' || entry[field].length > 4000) throw new Error('心情文本无效');
+                result[date][field] = entry[field];
+            }
+            if (entry.partnerChecked !== undefined) result[date].partnerChecked = entry.partnerChecked === true;
+        }
+        return result;
+    }
+    function moodOptions(input) {
+        if (!Array.isArray(input) || input.length > 1000) throw new Error('自定义心情格式无效');
+        return input.map(item => {
+            if (!item || typeof item.key !== 'string' || !/^[\w-]{1,80}$/.test(item.key) || typeof item.label !== 'string' || item.label.length > 100 || /[<>]/.test(item.label) || typeof item.kaomoji !== 'string' || item.kaomoji.length > 100 || /[<>]/.test(item.kaomoji) || !/^#[0-9a-fA-F]{6}$/.test(item.color)) throw new Error('自定义心情内容无效');
+            return { key: item.key, label: item.label, kaomoji: item.kaomoji, color: item.color };
+        });
+    }
     function message(input) {
         if (!input || typeof input !== 'object' || !['string', 'number'].includes(typeof input.id)) throw new Error('消息 ID 无效');
         const result = { id: input.id, sender: input.sender === null ? null : String(input.sender || '').slice(0, 100), text: String(input.text || '').slice(0, 30000),
@@ -45,14 +69,17 @@
         if (!data.records || typeof data.records !== 'object' || Array.isArray(data.records)) throw new Error('备份记录格式无效');
         const allowed = new Map([[GLOBAL_KEY, 'global']]);
         model.conversations.forEach(c => suffixes.forEach(s => allowed.set('SHIKI_NEXT_' + c.id + '_' + s, s)));
+        model.friends.forEach(f => moodSuffixes.forEach(s => allowed.set(moodKey(f.id, s), s)));
         const records = {};
-        if (Object.keys(data.records).length > model.conversations.length * suffixes.length + 1) throw new Error('备份记录数量无效');
+        if (Object.keys(data.records).length > model.conversations.length * suffixes.length + model.friends.length * moodSuffixes.length + 1) throw new Error('备份记录数量无效');
         for (const [key, value] of Object.entries(data.records)) {
             const type = allowed.get(key); if (!type) throw new Error('备份包含不允许的存储键');
             if (type === 'chatMessages') {
                 if (!Array.isArray(value) || value.length > 50000) throw new Error('消息数量超过预览版限制');
                 records[key] = value.map(message);
-            } else if (type === 'draft') {
+            } else if (type === 'moodCalendar') records[key] = moodCalendar(value);
+            else if (type === 'customMoodOptions') records[key] = moodOptions(value);
+            else if (type === 'draft') {
                 if (typeof value !== 'string' || value.length > 10000) throw new Error('草稿无效'); records[key] = value;
             } else if (type === 'showPartnerNameInChat') { if (typeof value !== 'boolean') throw new Error('显示设置无效'); records[key] = value; }
             else records[key] = type === 'global' ? globals(value) : cleanSettings(value);
@@ -68,6 +95,12 @@
                 const key = 'SHIKI_NEXT_' + c.id + '_' + suffix, value = await localforage.getItem(key);
                 if (value === null) continue;
                 records[key] = suffix === 'chatMessages' ? value.map(message) : suffix === 'chatSettings' ? cleanSettings(value) : jsonCopy(value);
+            }
+        }
+        for (const f of model.friends) {
+            for (const suffix of moodSuffixes) {
+                const key = moodKey(f.id, suffix), value = await localforage.getItem(key);
+                if (value !== null) records[key] = suffix === 'moodCalendar' ? moodCalendar(value) : moodOptions(value);
             }
         }
         const data = { format: FORMAT, version: 1, exportedAt: new Date().toISOString(), exclusions: ['avatars', 'images', 'audio', 'video', 'files', 'watch activities', 'custom CSS', 'backgrounds'], model, records };

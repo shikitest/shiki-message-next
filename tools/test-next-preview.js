@@ -20,7 +20,7 @@ function environment() {
     const ctx = { console, Event, crypto: { randomUUID }, localStorage: storage(), sessionStorage: storage(),
         dispatchEvent() {}, addEventListener() {},
         setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
-        NextModel: null, APP_PREFIX: 'SHIKI_NEXT_', SESSION_ID: '', settings: {},
+        NextModel: null, APP_PREFIX: 'SHIKI_NEXT_', SESSION_ID: '', settings: {}, messages: [],
         Math: Object.create(Math), document: { hidden: false },
         addMessage: msg => ctx.sent.push(msg), playSound() {}, sent: [],
         localforage: {
@@ -30,6 +30,9 @@ function environment() {
         }
     };
     ctx.window = ctx; vm.createContext(ctx);
+    const core = fs.readFileSync(path.join(root, 'js/core.js'), 'utf8');
+    vm.runInContext(core.slice(core.indexOf('function getDefaultSettings()'), core.indexOf('function renderBackgroundGallery()')), ctx);
+    vm.runInContext(core.slice(core.indexOf('function normalizeTextGenerationMode('), core.indexOf('window.chooseReplyText =')), ctx);
     for (const file of ['next-storage.js', 'next-model.js', 'next-runtime.js', 'next-backup.js']) vm.runInContext(fs.readFileSync(path.join(root, 'js', file), 'utf8'), ctx, { filename: file });
     return { ctx, records, timers, fail: k => { failKey = k; } };
 }
@@ -68,18 +71,20 @@ function environment() {
     assert.equal(ctx.sent.length, 2, 'stale A tasks cannot write into B');
     ctx.SESSION_ID = group.id; await ctx.NextModel.deleteFriend(a.id); ctx.NextRuntime.reply({});
     assert.equal(timers.size, 1, 'deleted friend stops replying'); ctx.NextRuntime.cancelReplies(); assert.equal(timers.size, 0);
-    await ctx.NextModel.saveFriend({ id: a.id, name: 'A', cards: ['A NEW'], deleted: false, replyProbability: 0.5 });
-    await ctx.NextModel.saveFriend({ id: b.id, name: 'B', cards: ['B ONLY'], replyProbability: 0.5 });
-    const draws = [0.1, 0, 0.9]; ctx.Math.random = () => draws.shift() ?? 0;
+    await ctx.NextModel.saveFriend({ id: a.id, name: 'A', cards: ['A NEW'], deleted: false, replyProbability: 0.5, replySettings: { allowReadNoReply: true, readNoReplyChance: 0.5 } });
+    await ctx.NextModel.saveFriend({ id: b.id, name: 'B', cards: ['B ONLY'], replyProbability: 0.5, replySettings: { allowReadNoReply: true, readNoReplyChance: 0.5 } });
+    const draws = [0.1, 0.9, 0.99, 0.99, 0.1, 0]; ctx.Math.random = () => draws.shift() ?? 0;
     ctx.NextRuntime.reply({}); assert.equal(timers.size, 1, 'separate Bernoulli draw for each member'); ctx.NextRuntime.cancelReplies();
     await ctx.localforage.setItem('SHIKI_NEXT_globalSettingsV1', { myName: 'Me', isDarkMode: true, colorTheme: 'black-white', fontSize: 18 });
     await ctx.localforage.setItem('SHIKI_NEXT_' + group.id + '_chatMessages', ctx.sent);
     await ctx.localforage.setItem('SHIKI_NEXT_' + directB.id + '_draft', 'B draft');
+    await ctx.localforage.setItem('SHIKI_NEXT_friend:' + a.id + ':moodCalendar', { '2026-09-26': { partner: 'happy', partnerNote: 'calendar source' } });
     const exported = await ctx.NextBackup.exportData();
     assert.equal(exported.model.friends[0].avatar, null);
     await ctx.NextBackup.importData(exported);
     assert.deepEqual(normalize(ctx.NextModel.snapshot()), normalize(exported.model));
     assert.equal(records.get('SHIKI_NEXT_' + directB.id + '_draft'), 'B draft');
+    assert.equal(records.get('SHIKI_NEXT_friend:' + a.id + ':moodCalendar')['2026-09-26'].partnerNote, 'calendar source');
     assert.equal(records.get('SHIKI_NEXT_globalSettingsV1').fontSize, 18);
     assert.equal(ctx.localStorage.getItem('groupChatSettings'), 'OLD GROUP');
     const bad = normalize(exported); bad.records.CHAT_APP_V3_sessionList = [];

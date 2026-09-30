@@ -4,9 +4,11 @@ let editingEnvId = null;
 let editingEnvSection = null;
 
 async function loadEnvelopeData() {
-    const saved = await localforage.getItem(getStorageKey('envelopeData'));
-    if (saved) envelopeData = saved;
-    const oldPending = await localforage.getItem(getStorageKey('pending_envelope'));
+    const id = String(SESSION_ID), version = window.NextRuntime ? NextRuntime.generation() : null;
+    const saved = await localforage.getItem(getSessionStorageKey(id, 'envelopeData'));
+    const oldPending = await localforage.getItem(getSessionStorageKey(id, 'pending_envelope'));
+    if (window.NextRuntime && (String(SESSION_ID) !== id || NextRuntime.generation() !== version)) return false;
+    envelopeData = saved || { outbox: [], inbox: [] };
     if (oldPending && envelopeData.outbox.length === 0) {
         envelopeData.outbox.push({
             id: 'legacy_' + Date.now(),
@@ -15,17 +17,20 @@ async function loadEnvelopeData() {
             replyTime: oldPending.replyTime,
             status: 'pending'
         });
-        await localforage.removeItem(getStorageKey('pending_envelope'));
-        saveEnvelopeData();
+        await localforage.setItem(getSessionStorageKey(id, 'envelopeData'), JSON.parse(JSON.stringify(envelopeData)));
+        await localforage.removeItem(getSessionStorageKey(id, 'pending_envelope'));
+        if (window.NextRuntime && (String(SESSION_ID) !== id || NextRuntime.generation() !== version)) return false;
     }
+    return true;
 }
 
 function saveEnvelopeData() {
-    localforage.setItem(getStorageKey('envelopeData'), envelopeData);
+    const key = getStorageKey('envelopeData'), snapshot = JSON.parse(JSON.stringify(envelopeData));
+    return localforage.setItem(key, snapshot).catch(error => { if (window.NextRuntime) NextRuntime.report(error); else console.warn(error); });
 }
 
 async function checkEnvelopeStatus() {
-    await loadEnvelopeData();
+    if (await loadEnvelopeData() === false) return;
     const now = Date.now();
     let changed = false;
     let newReplyLetter = null;

@@ -26,7 +26,7 @@ function initChatActionListeners() {
                 if (isBatchFavoriteMode) {
                     const wrapper = e.target.closest('.message-wrapper');
                     if (wrapper && !e.target.closest('.message-meta-actions')) {
-                        const messageId = Number(wrapper.dataset.id);
+                        const messageId = wrapper.dataset.id;
                         const index = selectedMessages.indexOf(messageId);
 
                         if (index > -1) {
@@ -48,8 +48,8 @@ function initChatActionListeners() {
                 const favoriteBtn = e.target.closest('.favorite-action-btn');
                 if (favoriteBtn) {
                     const wrapper = e.target.closest('.message-wrapper');
-                    const messageId = Number(wrapper.dataset.id);
-                    const message = messages.find(m => m.id === messageId);
+                    const messageId = wrapper.dataset.id;
+                    const message = messages.find(m => String(m.id) === messageId);
 
                     if (message) {
                         message.favorited = !message.favorited;
@@ -70,13 +70,13 @@ function initChatActionListeners() {
                 const wrapper = e.target.closest('.message-wrapper');
                 if (!wrapper) return;
 
-                const messageId = Number(wrapper.dataset.id);
-                const message = messages.find(m => m.id === messageId);
+                const messageId = wrapper.dataset.id;
+                const message = messages.find(m => String(m.id) === messageId);
                 if (!message) return;
 
 if (target.classList.contains('delete-btn')) {
     if (confirm('确定要删除这条消息吗？')) {
-        const index = messages.findIndex(m => m.id === messageId);
+        const index = messages.findIndex(m => String(m.id) === messageId);
         if (index > -1) {
             const savedScrollTop = DOMElements.chatContainer.scrollTop;
             messages.splice(index, 1);
@@ -94,7 +94,10 @@ if (target.classList.contains('delete-btn')) {
                     currentReplyTo = {
                         id: message.id,
                         sender: message.sender,
-                        text: message.text
+                        text: message.text,
+                        image: message.image,
+                        friendId: message.friendId,
+                        groupMemberId: message.groupMemberId
                     };
                     updateReplyPreview();
                     DOMElements.messageInput.focus();

@@ -9,4 +9,4 @@ http.createServer((req, res) => {
     const target = path.resolve(root, '.' + decodeURIComponent(pathname.slice('/shiki-message-next'.length)), pathname.endsWith('/') ? 'index.html' : '');
     if (!target.startsWith(root + path.sep)) { res.writeHead(403); res.end(); return; }
     fs.readFile(target, (err, data) => { if (err) { res.writeHead(404); res.end(); return; } res.setHeader('Content-Type', mime[path.extname(target)] || 'application/octet-stream'); res.setHeader('Cache-Control', 'no-store'); res.end(data); });
-}).listen(8765, '127.0.0.1', () => console.log('Preview: http://127.0.0.1:8765/shiki-message-next/'));
+}).listen(Number(process.env.SHIKI_PREVIEW_PORT) || 8765, '127.0.0.1', function () { console.log('Preview: http://127.0.0.1:' + this.address().port + '/shiki-message-next/'); });

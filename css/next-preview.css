@@ -5,7 +5,7 @@
 .next-page-header { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: calc(10px + env(safe-area-inset-top)) 16px 10px; border-bottom: 1px solid var(--border-color, #eee); }
 .next-page-header h2 { font: 600 17px/1.4 system-ui; margin: 0; }
 .next-page-body { overflow-y: auto; overscroll-behavior: contain; padding: 20px 20px calc(24px + env(safe-area-inset-bottom)); }
-.next-button { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; padding: 10px 16px; margin: 4px; background: #edf4ef; color: #284c35; border: 1px solid #cbdacf; border-radius: 12px; font: 500 14px/1.5 system-ui; cursor: pointer; }
+.next-button { display: inline-flex; justify-content: center; align-items: center; min-height: 48px; padding: 12px 16px; margin: 0; background: var(--primary-bg, #fff); color: var(--text-primary, #171717); border: 0; border-bottom: 1px solid var(--border-color, #ededed); border-radius: 0; font: 400 16px/1.5 var(--next-ui-font); cursor: pointer; }
 .next-button:disabled { opacity: .55; cursor: default; }
 .next-field { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 20px; font: 500 14px/1.5 system-ui; }
 .next-field input:not([type=checkbox]), .next-field textarea, .next-field select { box-sizing: border-box; width: 100%; min-height: 44px; border: 1px solid var(--border-color, #d9dfdb); border-radius: 10px; padding: 12px; background: var(--secondary-bg, #f7f8f7); color: inherit; font: 16px/1.6 system-ui; }
@@ -13,7 +13,7 @@
 .next-field input[type=checkbox] { align-self: flex-start; width: 24px; height: 24px; }
 .next-note, .next-empty { color: var(--text-secondary, #67706a); font: 13px/1.7 system-ui; }
 .next-friend-row { width: 100%; display: flex; align-items: center; gap: 14px; border: none; padding: 14px 20px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.next-avatar { flex: 0 0 48px; width: 48px; height: 48px; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; background: #e0ebe3; color: #55715e; font: 30px system-ui; }
+.next-avatar { flex: 0 0 48px; width: 48px; height: 48px; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; overflow: hidden; background: #e2e9f7; color: #8a98ae; font: 30px system-ui; }
 .next-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .next-row-copy { display: flex; flex-direction: column; flex: 1; min-width: 0; gap: 5px; overflow-wrap: anywhere; }
 .next-row-copy strong { font: 600 16px system-ui; }.next-row-copy small { color: var(--text-secondary, #777); }
@@ -27,4 +27,170 @@
 body .notification { z-index: 30000; }
 /* Old global role/profile editors cannot change the canonical friend model. */
 #session-manager-modal, #group-chat-modal { display: none !important; }
+:root { --next-ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+body, .shiki-app-shell, .next-page { font-family: var(--next-ui-font); }
+.next-page-header { min-height: 56px; border: 0; align-items: center; }
+.next-page-header button { padding: 0; min-width: 44px; background: transparent; border: 0; }
+.next-page-header h2 { font: 600 18px/1.4 var(--next-ui-font); }
+.next-page-body { flex: 1; min-height: 0; }
+.next-page-body > .next-button { display: flex; width: 100%; }
+.next-profile-page { background: #ededed; }
+.next-profile-page .next-page-header { background: var(--primary-bg, #fff); }
+.next-profile-page .next-page-header button { font-size: 38px; font-weight: 300; }
+.next-profile-page .next-page-body { padding: 0; }
+.next-profile-card { display: flex; align-items: flex-start; gap: 16px; background: var(--primary-bg, #fff); padding: 44px 24px 34px; margin-bottom: 8px; }
+.next-profile-card .next-avatar { border-radius: 8px; width: 64px; height: 64px; flex-basis: 64px; }
+.next-profile-copy { min-width: 0; padding-top: 0; }
+.next-profile-copy h1 { margin: 0 0 7px; font: 600 22px/1.35 var(--next-ui-font); overflow-wrap: anywhere; }
+.next-profile-status { margin: 0; color: #888; font: 400 16px/1.6 var(--next-ui-font); overflow-wrap: anywhere; }
+.next-profile-page .next-page-body > .next-button { color: #596b87; font-size: 18px; min-height: 56px; margin-bottom: 8px; border: 0; }
+.next-my-card { display: flex; width: 100%; align-items: center; gap: 18px; padding: 24px 20px 30px; border: 0; background: transparent; color: inherit; text-align: left; }
+.next-my-card strong { font-size: 27px; font-weight: 700; }
+.next-my-card small { font-size: 15px; line-height: 1.6; }
+.next-my-card .next-avatar { width: 60px; height: 60px; flex-basis: 60px; }
+.next-toggle { flex-direction: row; align-items: center; justify-content: space-between; }
+.next-toggle input[type=checkbox] { align-self: center; }
+.next-friend-row { padding: 12px 20px; min-height: 76px; }
+.next-row-copy strong { font: 500 18px/1.4 var(--next-ui-font); }
+.next-row-copy small { font: 400 14px/1.5 var(--next-ui-font); }
+.shiki-shell-topbar { backdrop-filter: none; background: var(--shell-surface); border: 0; min-height: 64px; align-items: center; }
+.shiki-shell-topbar h1 { font: 700 26px/1.3 var(--next-ui-font); }
+.shiki-conversation-search { border-radius: 22px; padding: 12px 16px; margin: 12px 16px; }
+.shiki-conversation-list, .shiki-conversation-row { border: 0; }
+.shiki-conversation-name { font: 500 18px/1.4 var(--next-ui-font); }
+.shiki-conversation-preview { font: 400 15px/1.5 var(--next-ui-font); }
+.shiki-conversation-type, .shiki-legacy-badge { display: none !important; }
+.shiki-shell-nav { background: var(--shell-surface); backdrop-filter: none; }
+.shiki-chat-topbar { backdrop-filter: none; background: var(--shell-surface); box-shadow: none; }
+.shiki-chat-title { font: 600 18px/1.35 var(--next-ui-font); }
+.shiki-chat-subtitle { font: 400 12px/1.4 var(--next-ui-font); }
+.shiki-chat-avatar { border-radius: 50%; width: 36px; height: 36px; }
+.shiki-chat-view-active > .header { height: calc(62px + env(safe-area-inset-top)); min-height: calc(62px + env(safe-area-inset-top)); max-height: calc(62px + env(safe-area-inset-top)); padding: 0; margin: 0; overflow: hidden; flex-shrink: 0; }
+.shiki-chat-view-active:not(.with-background) #chat-container { background-color: #8eacd4; }
+.shiki-chat-view-active .message { font-family: var(--next-ui-font); box-shadow: none; }
+.shiki-chat-view-active .message-sent { background: #7bea82; color: #171717; }
+.shiki-chat-view-active .message-received { background: #fff; color: #171717; }
+.shiki-chat-view-active .input-area-wrapper { background: var(--shell-surface); backdrop-filter: none; }
+.shiki-chat-view-active #message-input { font-family: var(--next-ui-font); background: #f5f5f5; border: 1px solid #ededed; min-height: 38px; }
+.next-switching .input-area-wrapper { pointer-events: none; }
+.next-switching #chat-container, .next-switching .shiki-chat-topbar { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .next-page *, .shiki-app-shell *, .shiki-chat-topbar { animation: none !important; transition: none !important; } }
+#mood-modal { z-index: 27000 !important; background: var(--primary-bg, #fff); backdrop-filter: none; }
+#mood-modal .modal-content { width: 100%; max-width: none; height: 100dvh; max-height: none; border: 0; border-radius: 0; box-shadow: none; }
+#mood-selector-overlay { z-index: 28000; }
+.shiki-chat-view-active .input-area { display: flex; align-items: center; gap: 6px; padding: 9px 12px; }
+.shiki-chat-view-active .input-area .input-btn { flex: 0 0 28px; min-width: 28px; width: 28px; height: 34px; border-radius: 0; background: transparent; color: var(--text-primary, #171717); font-size: 21px; box-shadow: none; }
+.shiki-chat-view-active .input-area #message-input { min-width: 0; flex: 1; padding: 8px 12px; font-size: 16px; }
+.shiki-chat-view-active .input-buttons { gap: 0; }
+#next-input-tools { position: absolute; bottom: calc(58px + env(safe-area-inset-bottom)); left: 0; right: 0; height: 130px; display: flex; align-items: center; justify-content: space-evenly; background: var(--primary-bg, #fff); border-top: 1px solid #eee; }
+#next-input-tools[hidden] { display: none; }
+#next-input-tools button { display: flex; align-items: center; justify-content: center; width: 52px; height: 52px; }
+.shiki-chat-view-active #user-sticker-picker { position: fixed; bottom: calc(58px + env(safe-area-inset-bottom)); left: 0; right: 0; width: 100%; border-radius: 0; }
 @media (max-width: 440px) { .next-page-header { gap: 8px; } .next-page-header h2 { font-size: 16px; } .next-page-body { padding-left: 16px; padding-right: 16px; } }
+
+/* Stage 1.2 reference-match tokens and surfaces. Dimensions are CSS-pixel estimates
+   from the 1206px screenshots captured at approximately 3x device scale. */
+:root {
+    --next-ui-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --next-ref-page: #fff;
+    --next-ref-text: #111;
+    --next-ref-secondary: #8c8c8c;
+    --next-ref-search: #f4f4f4;
+    --next-ref-divider: #f0f0f0;
+}
+body, .shiki-app-shell, .next-page { font-family: var(--next-ui-font); }
+.shiki-app-shell { max-width: none; background: var(--next-ref-page); color: var(--next-ref-text); box-shadow: none; }
+.shiki-app-shell::before { background: var(--next-ref-page); }
+html[data-theme="dark"] .shiki-app-shell::before { background: var(--next-ref-page); }
+.shiki-shell-view { padding-bottom: calc(74px + env(safe-area-inset-bottom)); background: var(--next-ref-page); color: var(--next-ref-text); }
+.shiki-shell-topbar { min-height: calc(56px + env(safe-area-inset-top)); padding: calc(6px + env(safe-area-inset-top)) 14px 6px; align-items: center; background: var(--next-ref-page); border: 0; backdrop-filter: none; }
+.shiki-chat-list-topbar { justify-content: space-between; }
+.shiki-shell-topbar .shiki-chat-list-title { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--next-ref-text); font: 700 23px/1.2 var(--next-ui-font); }
+.shiki-chat-list-title svg { width: 12px; height: 12px; fill: currentColor; stroke: none; }
+.shiki-header-tools, .next-friends-tools { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.shiki-shell-icon-button, .next-tool-button { flex: 0 0 40px; width: 40px; min-width: 40px; height: 42px; min-height: 42px; padding: 8px; display: inline-flex; align-items: center; justify-content: center; color: #111; background: transparent; border: 0; }
+.next-tool-button > span { display: none; }
+.shiki-shell-icon-button:active, .next-tool-button:active { background: #f4f4f4; border-radius: 9px; }
+.shiki-line-icon { display: block; width: 25px; height: 25px; flex: 0 0 auto; }
+.shiki-conversation-search { height: 42px; box-sizing: border-box; margin: 8px 14px 11px; padding: 0 13px; gap: 9px; border-radius: 24px; color: #999; background: var(--next-ref-search); }
+.shiki-conversation-search > i { font-size: 17px; }
+.shiki-conversation-search > .shiki-line-icon { width: 18px; height: 18px; flex: 0 0 18px; color: #999; }
+.shiki-conversation-search input { font: 400 15px/1.2 var(--next-ui-font); color: #222; }
+.shiki-list-scan-button { width: 30px; height: 32px; padding: 4px; display: grid; place-items: center; border: 0; background: transparent; color: #777; }
+.shiki-list-scan-button:disabled { opacity: 1; }
+.shiki-list-scan-button .shiki-line-icon { width: 20px; height: 20px; }
+.shiki-conversation-search input::placeholder, .next-friends-search input::placeholder { color: #aaa; opacity: 1; }
+.shiki-conversation-list { border: 0; }
+.shiki-conversation-row { min-height: 78px; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 12px; padding: 10px 14px; border: 0; background: var(--next-ref-page); }
+.shiki-conversation-avatar { width: 48px; height: 48px; flex-basis: 48px; border-radius: 50%; background: #dce6ff; color: #fff; }
+.shiki-conversation-avatar .fa-user, .shiki-conversation-avatar .fa-users { font-size: 21px; }
+.shiki-conversation-body { gap: 3px; align-self: center; }
+.shiki-conversation-title-line strong { font: 500 17px/1.35 var(--next-ui-font); color: #171717; }
+.shiki-conversation-preview { font: 400 14px/1.4 var(--next-ui-font); color: #888; }
+.shiki-conversation-side { font: 400 10px/1.4 var(--next-ui-font); color: #999; padding: 2px 0; }
+.shiki-pin-button { padding: 4px 2px; color: #777; font-size: 11px; }
+.shiki-pin-button.active { color: #333; }
+.shiki-shell-nav { height: calc(70px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); grid-template-columns: repeat(4, minmax(0, 1fr)); border-top: 1px solid var(--next-ref-divider); background: var(--next-ref-page); backdrop-filter: none; }
+.shiki-shell-nav .shiki-nav-tab { gap: 3px; color: #111; font: 400 13px/1.25 var(--next-ui-font); }
+.shiki-shell-nav .shiki-nav-tab .shiki-line-icon { width: 25px; height: 25px; }
+.shiki-shell-nav .shiki-nav-tab.active { color: #111; font-weight: 600; }
+.shiki-shell-nav .shiki-nav-tab.active .shiki-line-icon { stroke-width: 2.2; }
+.shiki-line-icon.is-current-icon { stroke-width: 2.2; }
+.shiki-shell-nav .shiki-nav-tab:focus-visible, .shiki-shell-icon-button:focus-visible, .next-tool-button:focus-visible { outline: 2px solid #555; outline-offset: -2px; }
+
+/* Friends page anatomy follows reference image 2. */
+.next-friends-topbar { justify-content: flex-end; min-height: calc(56px + env(safe-area-inset-top)); }
+.next-friends-header-spacer { flex: 1; }
+.next-friends-tools { gap: 4px; }
+.next-my-card { min-height: 116px; box-sizing: border-box; padding: 18px 16px 20px; gap: 12px; justify-content: space-between; background: var(--next-ref-page); color: var(--next-ref-text); }
+.next-my-card .next-row-copy { order: 0; gap: 2px; }
+.next-my-card .next-row-copy strong { font: 700 25px/1.3 var(--next-ui-font); color: #111; }
+.next-my-card .next-row-copy small { font: 400 16px/1.5 var(--next-ui-font); color: #888; }
+.next-my-card .next-avatar { order: 1; width: 56px; height: 56px; flex-basis: 56px; background: #dce6ff; color: #fff; font-size: 30px; }
+.next-avatar > .shiki-line-icon { width: 27px; height: 27px; stroke: #fff; stroke-width: 1.7; }
+.next-friends-search { height: 42px; margin: 8px 16px 24px; padding: 0 13px; box-sizing: border-box; display: flex; align-items: center; gap: 9px; border-radius: 24px; background: var(--next-ref-search); color: #999; }
+.next-friends-search > .shiki-line-icon { width: 18px; height: 18px; }
+.next-friends-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: #222; font: 400 15px/1.2 var(--next-ui-font); }
+.next-scan-button { width: 34px; height: 34px; padding: 5px; display: grid; place-items: center; border: 0; background: transparent; color: #777; }
+.next-scan-button:disabled { opacity: 1; }
+.next-scan-button .shiki-line-icon { width: 20px; height: 20px; }
+.next-services-heading { display: flex; align-items: center; justify-content: space-between; margin: 0 16px 13px; }
+.next-services-heading h2 { margin: 0; font: 700 17px/1.3 var(--next-ui-font); }
+.next-services-heading > .next-button { min-height: 30px; padding: 0; border: 0; background: transparent; color: #999; font: 400 14px/1.3 var(--next-ui-font); }
+.next-services-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0 12px 24px; }
+.next-services-grid .next-service { min-width: 0; min-height: 82px; padding: 4px 2px 8px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 7px; border: 0; background: transparent; color: #111; font: 400 14px/1.3 var(--next-ui-font); white-space: normal; }
+.next-service .shiki-line-icon { width: 29px; height: 29px; stroke-width: 1.8; }
+.next-service:disabled { color: #999; opacity: 1; cursor: not-allowed; }
+.next-service:disabled .shiki-line-icon { color: #999; stroke: #999; }
+.next-section-heading { width: 100%; min-height: 52px; padding: 0 16px; display: flex; align-items: center; gap: 8px; border: 0; background: var(--next-ref-page); color: #111; text-align: left; font: 700 17px/1.3 var(--next-ui-font); }
+.next-section-heading > .next-section-count { flex: 1; }
+.next-section-heading > .shiki-line-icon { width: 15px; height: 15px; color: #999; transition: transform .16s ease; }
+.next-section-heading.is-collapsed > .shiki-line-icon { transform: rotate(-90deg); }
+.next-section-list, #next-friend-list { background: var(--next-ref-page); }
+.next-group-row, .next-friend-row { width: 100%; min-height: 70px; box-sizing: border-box; padding: 9px 16px; display: flex; align-items: center; gap: 12px; border: 0; background: var(--next-ref-page); color: #111; text-align: left; cursor: pointer; }
+.next-group-row .next-group-avatar { width: 42px; height: 42px; flex: 0 0 42px; border-radius: 50%; display: grid; place-items: center; background: #dce6ff; color: #fff; }
+.next-group-avatar .shiki-line-icon { width: 23px; height: 23px; }
+.next-friend-row { min-height: 68px; }
+.next-friend-row .next-avatar { width: 42px; height: 42px; flex-basis: 42px; background: #dce6ff; color: #8b98b2; font-size: 27px; }
+.next-friend-row .next-row-copy, .next-group-row .next-row-copy { gap: 2px; }
+.next-friend-row .next-row-copy strong, .next-group-row .next-row-copy strong { color: #111; font: 500 16px/1.4 var(--next-ui-font); }
+.next-friend-row .next-row-copy small, .next-group-row .next-row-copy small { color: #888; font: 400 13px/1.4 var(--next-ui-font); }
+.next-row-chevron { flex: 0 0 auto; margin-left: auto; color: #999; font: 300 24px/1 var(--next-ui-font); }
+.next-friends-empty { margin: 60px 16px 30px; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.next-friends-empty strong { color: #111; font: 600 19px/1.45 var(--next-ui-font); }
+.next-friends-empty p { margin: 8px 0 22px; color: #888; font: 400 15px/1.5 var(--next-ui-font); }
+.next-friends-empty .next-button { min-height: 48px; padding: 0 20px; border: 1px solid #ddd; border-radius: 8px; background: #fff; color: #111; font: 500 17px/1.2 var(--next-ui-font); }
+.next-empty { margin: 30px 16px; text-align: center; color: #999; }
+
+/* Keep secondary screens functional while using the same neutral reference palette. */
+.next-page { background: #fff; color: #111; }
+.next-page-header { background: #fff; border-bottom: 1px solid #f0f0f0; }
+.next-page-header h2 { color: #111; font-family: var(--next-ui-font); }
+.next-page-body { background: #fff; color: #111; }
+@media (max-width: 360px) {
+    .shiki-header-tools, .next-friends-tools { gap: 0; }
+    .shiki-shell-icon-button, .next-tool-button { flex-basis: 36px; width: 36px; min-width: 36px; }
+    .shiki-line-icon { width: 23px; height: 23px; }
+    .next-my-card .next-row-copy strong { font-size: 23px; }
+}
+@media (min-width: 621px) { .shiki-app-shell { max-width: 430px; left: 50%; transform: translateX(-50%); } }
