@@ -1,6 +1,7 @@
 (function (global) {
     'use strict';
     const KEY = 'SHIKI_NEXT_friendFrameworkV1';
+    const MAX_FRIEND_CARDS = 10000;
     let state = { version: 1, friends: [], conversations: [] };
     let queue = Promise.resolve();
     const copy = value => JSON.parse(JSON.stringify(value));
@@ -31,8 +32,8 @@
         const clean = { version: 1, friends: [], conversations: [] };
         for (const f of input.friends) {
             if (!f || typeof f.id !== 'string' || !/^[\w-]{1,80}$/.test(f.id) || ids.has(f.id) || !text(f.name, 40)) throw new Error('好友 ID 或名称无效');
-            if (!Array.isArray(f.cards) || f.cards.length > 2000 || f.cards.some(c => typeof c !== 'string' || c.length > 2000)) throw new Error('字卡格式或长度无效');
-            if (f.disabledCards !== undefined && (!Array.isArray(f.disabledCards) || f.disabledCards.length > 2000 || f.disabledCards.some(c => typeof c !== 'string' || c.length > 2000))) throw new Error('屏蔽字卡格式无效');
+            if (!Array.isArray(f.cards) || f.cards.length > MAX_FRIEND_CARDS || f.cards.some(c => typeof c !== 'string' || c.length > 2000)) throw new Error('字卡格式或长度无效');
+            if (f.disabledCards !== undefined && (!Array.isArray(f.disabledCards) || f.disabledCards.length > MAX_FRIEND_CARDS || f.disabledCards.some(c => typeof c !== 'string' || c.length > 2000))) throw new Error('屏蔽字卡格式无效');
             if (f.cardGroups !== undefined && (!Array.isArray(f.cardGroups) || f.cardGroups.length > 200 || f.cardGroups.some(g => !g || typeof g.name !== 'string' || !Array.isArray(g.items) || g.items.some(c => typeof c !== 'string')))) throw new Error('字卡分组格式无效');
             ids.add(f.id);
             const avatar = typeof f.avatar === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(f.avatar) && f.avatar.length <= 250000 ? f.avatar : null;

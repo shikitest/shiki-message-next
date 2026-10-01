@@ -1314,8 +1314,11 @@ function createMessageFragment(msg, prevMsg, nextMsg, lastSenderRef) {
     }
 
     const isImageOnly = !msg.text && !!msg.image;
+    const isSticker = isImageOnly && (msg.imageKind === 'sticker' ||
+        (typeof stickerLibrary !== 'undefined' && stickerLibrary.includes(msg.image)) ||
+        (typeof myStickerLibrary !== 'undefined' && myStickerLibrary.includes(msg.image)));
     let content = msg.text ? `<div>${safeMessageText(msg.text).replace(/\n/g, '<br>')}</div>` : '';
-    if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}" alt="图片" style="max-width:${isImageOnly ? '100px' : '100px'}; border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
+    if (msg.image) content += `<img src="${msg.image}" class="message-image${isImageOnly ? ' message-image-only' : ''}${isSticker ? ' message-sticker' : ''}" alt="${isSticker ? '表情包' : '图片'}" style="border-radius: 12px;${!isImageOnly ? ' margin-top: 6px;' : ''} cursor: pointer;" onclick="viewImage('${msg.image}')">`;
     messageHTML += content;
 
     const messageDiv = document.createElement('div');
@@ -1915,7 +1918,7 @@ if (!isBatchMode && type === 'normal' && window.NextRuntime) {
                 setTimeout(() => {
                     if (window.NextRuntime && (String(SESSION_ID) !== batchSession || NextRuntime.generation() !== batchGeneration)) return;
                     addMessage({
-                        id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal'
+                        id: Date.now() + index, sender: 'user', text: msg.text || '', image: msg.image || null, imageKind: msg.imageKind || null, timestamp: new Date(), status: 'sent', favorited: false, type: 'normal'
                     });
                     playSound('send');
                 }, index * 300);

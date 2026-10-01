@@ -1764,8 +1764,16 @@ function _showImportUI(data) {
         { id: '_ri_statg',    icon: ICONS.folderBig, label: '对方状态分组',  data: data.customStatusGroups,  key: 'customStatusGroups', extra: true },
     ].filter(m => m.data !== undefined && m.data !== null && (Array.isArray(m.data) ? m.data.length > 0 && m.data[0] !== undefined : true));
 
-    _showIOSheet(`导入字卡`, `文件中包含 ${modules.length} 个模块`, modules, ICONS.import, (selected, mode) => {
-        if (!selected.length) { showNotification('请至少选择一项', 'error'); return; }
+    _showIOSheet(`导入字卡`, `文件中包含 ${modules.length} 个模块`, modules, ICONS.import, async (selected, mode) => {
+        if (!selected.length) { showNotification('请至少选择一项', 'error'); return false; }
+        const importingCards = selected.some(m => m.key === 'customReplies' || m.key === 'customReplyGroups');
+        const cardOwnerId = window.NextRuntime && NextRuntime.cardEditorOwnerId();
+        if (importingCards && window.NextRuntime && !cardOwnerId) {
+            showNotification('请从当前聊天选择好友后再导入字卡', 'error');
+            return false;
+        }
+        const previousCards = customReplies.slice();
+        const previousGroups = (window.customReplyGroups || []).map(group => ({ ...group, items: (group.items || []).slice() }));
         try {
             const overwrite = mode === 'overwrite';
             let totalAdded = 0;
@@ -1859,13 +1867,27 @@ function _showImportUI(data) {
                     }
                 });
             }
+            if (importingCards && window.NextRuntime) {
+                if (NextRuntime.cardEditorOwnerId() !== cardOwnerId) throw new Error('聊天或好友已切换，导入已取消');
+                await NextRuntime.saveEditorCards();
+                await NextModel.flush();
+                const saved = NextModel.friend(cardOwnerId);
+                if (!saved || JSON.stringify(saved.cards) !== JSON.stringify(customReplies)) throw new Error('好友字卡未完成保存');
+            }
             throttledSaveData();
             if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
             if (typeof window.renderAnnStatusPool === 'function') window.renderAnnStatusPool();
-            showNotification(`✓ 导入成功（${overwrite ? '覆盖' : '追加'}）${totalAdded > 0 ? `，共 ${totalAdded} 条` : ''}`, 'success', 3000);
+            const disabledGroups = importingCards && (window.customReplyGroups || []).filter(group => group.disabled);
+            const disabledHint = disabledGroups.length ? `；${disabledGroups.length} 个分组处于停用状态，启用后才会用于回复` : '';
+            showNotification(`✓ 导入并保存成功（${overwrite ? '覆盖' : '追加'}）${totalAdded > 0 ? `，共 ${totalAdded} 条` : ''}${disabledHint}`, disabledHint ? 'warning' : 'success', disabledHint ? 6000 : 3000);
+            return true;
         } catch (err) {
+            customReplies = previousCards;
+            window.customReplyGroups = previousGroups;
+            if (typeof renderReplyLibrary === 'function') renderReplyLibrary();
             console.error('字卡导入失败:', err);
             showNotification('导入过程中发生错误：' + err.message, 'error');
+            return false;
         }
     }, true);
 }
@@ -1973,11 +1995,19 @@ function _showIOSheet(title, subtitle, modules, icon, onConfirm, showMode = fals
     overlay.querySelector('#_io_cancel').onclick = close;
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 
-    overlay.querySelector('#_io_confirm').onclick = () => {
+    overlay.querySelector('#_io_confirm').onclick = async () => {
         const selected = modules.filter(m => document.getElementById(m.id)?.checked);
         const mode = showMode ? (document.getElementById('_io_overwrite')?.checked ? 'overwrite' : 'merge') : 'export';
-        close();
-        onConfirm(selected, mode);
+        const confirmButton = overlay.querySelector('#_io_confirm');
+        confirmButton.disabled = true;
+        try {
+            if (await onConfirm(selected, mode) !== false) close();
+        } catch (error) {
+            console.error('导入或导出失败:', error);
+            showNotification('操作失败：' + String(error.message || error), 'error');
+        } finally {
+            confirmButton.disabled = false;
+        }
     };
 }
 

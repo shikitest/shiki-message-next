@@ -1301,7 +1301,7 @@ function initComboMenu() {
         grid.className = 'sticker-grid-view';
         myStickerLibrary.forEach((src, idx) => {
             const item = makeDeletableStickerItem(src, () => {
-                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, status: 'sent', type: 'normal' });
+                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, imageKind: 'sticker', status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
@@ -1333,7 +1333,7 @@ function initComboMenu() {
         grid.className = 'sticker-grid-view';
         stickerLibrary.forEach(src => {
             const item = makeStickerItem(src, () => {
-                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, status: 'sent', type: 'normal' });
+                addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, imageKind: 'sticker', status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;

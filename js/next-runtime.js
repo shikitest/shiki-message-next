@@ -330,7 +330,7 @@
                 let disabledStickers = new Set();
                 try { disabledStickers = new Set(JSON.parse(NextStorage.local.getItem('disabledStickerItems') || '[]')); } catch (_) {}
                 const enabledStickers = (typeof stickerLibrary === 'undefined' ? [] : stickerLibrary).filter(s => !disabledStickers.has(s));
-                if (enabledStickers.length && Math.random() < 0.2) delayedExtra({ text: '', image: enabledStickers[Math.floor(Math.random() * enabledStickers.length)] }, 400 + Math.random() * 600);
+                if (enabledStickers.length && Math.random() < 0.2) delayedExtra({ text: '', image: enabledStickers[Math.floor(Math.random() * enabledStickers.length)], imageKind: 'sticker' }, 400 + Math.random() * 600);
                 if (separateEmoji) delayedExtra({ text: separateEmoji }, 300 + Math.random() * 400);
             }, delay);
             replyTimers.add(timer);

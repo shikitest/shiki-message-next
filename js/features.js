@@ -499,7 +499,7 @@ function showEmojiTab() {
         item.innerHTML = `<img src="${src}" style="width:100%; height:100%; object-fit:cover; border-radius:6px;">`;
         item.onclick = () => {
             if (isBatchMode) {
-                batchMessages.push({ id: Date.now() + batchMessages.length, text: '', image: src });
+                batchMessages.push({ id: Date.now() + batchMessages.length, text: '', image: src, imageKind: 'sticker' });
                 updateBatchPreview();
                 showNotification('已添加到批量发送', 'success', 1200);
             } else {
@@ -509,6 +509,7 @@ function showEmojiTab() {
                     text: '',
                     timestamp: new Date(),
                     image: src,
+                    imageKind: 'sticker',
                     status: 'sent',
                     type: 'normal'
                 });
