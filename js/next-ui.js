@@ -244,14 +244,19 @@
         body.querySelector('#next-avatar-input').accept = 'image/png,image/jpeg,image/webp';
         const theme = e('label', 'next-field', '主题'); const select = e('select'); select.id = 'next-theme'; select.setAttribute('aria-label', '主题');
         [['black-white', '黑白'], ['gold', '暖金'], ['green', '绿色']].forEach(([v, t]) => { const o = e('option', '', t); o.value = v; select.append(o); }); select.value = globals.colorTheme || 'black-white'; if (!select.value) select.value = 'black-white'; theme.append(select); body.append(theme);
-        const dark = e('label', 'next-field', '夜间模式'); const checkbox = e('input'); checkbox.id = 'next-dark'; checkbox.type = 'checkbox'; checkbox.checked = !!globals.isDarkMode; checkbox.setAttribute('aria-label', '夜间模式'); dark.append(checkbox); body.append(dark);
+        const dark = e('label', 'next-field', '夜间模式'); const nightCheckbox = e('input'); nightCheckbox.id = 'next-dark'; nightCheckbox.type = 'checkbox'; nightCheckbox.checked = !!globals.isDarkMode; nightCheckbox.setAttribute('aria-label', '夜间模式'); dark.append(nightCheckbox); body.append(dark);
         body.append(e('h3', 'next-settings-heading', '全站功能'));
         body.append(e('p', 'next-note', '保活音频是全站辅助功能；浏览器或系统仍可能暂停后台网页。'));
         body.append(button('切换后台保活音频', 'toggle-keepalive'));
         const keepalive = e('p', 'next-note'); keepalive.id = 'next-keepalive-status';
         const legacyKeepalive = document.getElementById('keepalive-audio-desc');
         keepalive.textContent = legacyKeepalive ? legacyKeepalive.textContent : '保活状态由浏览器控制';
-        body.append(keepalive, button('请求本机消息通知权限', 'notification'));
+        const notifications = NextNotifications.status();
+        body.append(keepalive, checkbox('站内消息提醒', 'next-in-app-notifications', notifications.inApp));
+        body.append(button(notifications.system && notifications.permission === 'granted' ? '关闭系统消息通知' : '开启系统消息通知', 'notification'));
+        const notificationStatus = e('p', 'next-note'); notificationStatus.id = 'next-notification-status';
+        notificationStatus.textContent = notifications.permission === 'granted' ? (notifications.system ? '系统通知已开启' : '系统通知已关闭') : notifications.permission === 'denied' ? '浏览器已拒绝通知权限，请到浏览器或系统设置中允许通知' : notifications.permission === 'unsupported' ? '此浏览器不支持系统通知；站内提醒仍可使用' : '尚未允许系统通知；点击上方按钮申请权限';
+        body.append(notificationStatus);
         body.append(button('保存网站设置', 'save-globals'));
     }
     function openBackup() {
@@ -359,8 +364,15 @@
             return;
         }
         if (action === 'notification') {
-            if (!('Notification' in global)) return showNotification('此浏览器不支持通知，请在支持的主屏幕应用中使用', 'info');
-            const permission = await Notification.requestPermission(); showNotification(permission === 'granted' ? '通知权限已开启；不保证退出网站后收到消息' : '通知权限未开启', 'info'); return;
+            const current = NextNotifications.status();
+            try {
+                const status = await NextNotifications.setSystemEnabled(!(current.system && current.permission === 'granted'));
+                const label = status.system ? '系统通知已开启；不保证系统暂停或关闭网站后仍能收到消息' : status.permission === 'denied' ? '浏览器已拒绝权限，请到浏览器或系统设置中允许通知' : '系统通知未开启';
+                const statusNode = page.querySelector('#next-notification-status'); if (statusNode) statusNode.textContent = label;
+                if (node.isConnected) node.textContent = status.system ? '关闭系统消息通知' : '开启系统消息通知';
+                showNotification(label, 'info');
+            } catch (error) { NextRuntime.report(error); }
+            return;
         }
         if (action === 'choose-friend') { close(); ShikiAppShell.showPrimary('friends'); renderFriends(); return; }
         if (action === 'remove-avatar') { formAvatar = null; const v = page.querySelector('#next-avatar-preview'); if (v) v.replaceWith(Object.assign(avatar(null), { id: 'next-avatar-preview' })); return; }
@@ -444,6 +456,11 @@
         root.addEventListener('click', handle); page.addEventListener('click', handle);
         root.querySelector('#next-friend-search').addEventListener('input', renderFriends);
         page.addEventListener('change', event => {
+            if (event.target.id === 'next-in-app-notifications') {
+                try { NextNotifications.setInAppEnabled(event.target.checked); }
+                catch (error) { event.target.checked = !event.target.checked; NextRuntime.report(error); }
+                return;
+            }
             if (event.target.id === 'next-background-file' && event.target.files[0]) {
                 const file = event.target.files[0], id = page.dataset.id, version = avatarVersion;
                 if (file.size > 10 * 1024 * 1024 || !/^image\/(png|jpeg|webp)$/.test(file.type)) return showNotification('请选择 10MB 以下图片', 'warning');
@@ -521,5 +538,5 @@
             ShikiAppShell.refresh();
         });
     }
-    global.NextUI = Object.freeze({ initialize, renderFriends, refreshProfiles, openProfile, openFriend, openGroup, openCreate, openBackup, openBackground, openListEditor, openReplyLibraryForCurrent, deleteConversation, beforeNavigate: () => { if (global.NextRuntime) NextRuntime.flush().catch(NextRuntime.report); } });
+    global.NextUI = Object.freeze({ initialize, renderFriends, refreshProfiles, openProfile, openFriend, openGroup, openCreate, openBackup, openBackground, openListEditor, openReplyLibraryForCurrent, deleteConversation, dismissForNavigation: close, beforeNavigate: () => { if (global.NextRuntime) NextRuntime.flush().catch(NextRuntime.report); } });
 })(window);

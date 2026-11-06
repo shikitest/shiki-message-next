@@ -1,0 +1,46 @@
+/* F7 iOS chat presentation, with the existing conversation skin as authority. */
+#next-f7-app {
+    position: fixed; inset: 0; z-index: 100; isolation: isolate;
+    --f7-page-bg-color: #fff;
+    --f7-page-transition-duration: 280ms;
+    --f7-page-swipeback-transition-duration: 240ms;
+    --f7-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+}
+#next-f7-app > .view { position: absolute; inset: 0; width: 100%; z-index: 1; }
+#next-f7-app > .page { display: none; }
+#next-f7-app .page { overflow: hidden; }
+#next-f7-chat-page { background-color: var(--next-ref-chat-bg); }
+#next-f7-chat-page > .header { display: none !important; }
+#next-f7-app #shiki-chat-topbar {
+    position: absolute; inset: 0 0 auto; width: 100%; max-width: none;
+    height: calc(52px + env(safe-area-inset-top)); transform: none;
+    background: transparent; backdrop-filter: none; border: 0;
+}
+#next-f7-chat-page .main-chat-area {
+    position: absolute; inset: 0; padding-top: calc(52px + env(safe-area-inset-top));
+    background-color: var(--next-ref-chat-bg); background-image: var(--chat-bg-image, none);
+    background-position: center; background-size: cover; isolation: auto;
+}
+#next-f7-chat-page .main-chat-area::before { display: none; }
+#next-f7-app #chat-container {
+    height: 100%; min-height: 0; min-width: 0; box-sizing: border-box;
+    background: transparent; animation: none !important; overflow-anchor: none;
+}
+#next-f7-app .message-wrapper.next-message-arrival {
+    animation: message-appear-from-bottom 180ms ease-out both;
+    transform-origin: bottom center;
+}
+#next-f7-app .input-area-wrapper {
+    position: absolute; inset: auto 0 var(--next-keyboard-lift, 0px); width: 100%;
+    max-width: none; margin: 0; transform: none; transition: none;
+    background: var(--primary-bg, #fff); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+#next-f7-app .input-area { padding: 8px 10px; gap: 8px; }
+#next-f7-app .messagebar-area { margin: 0; border-radius: 20px; }
+#next-f7-app #message-input { font-size: 16px; line-height: 1.4; }
+#next-f7-app .shiki-shell-view.is-entering { animation: none; }
+#next-f7-app .page-previous { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+    #next-f7-app { --f7-page-transition-duration: 1ms; --f7-page-swipeback-transition-duration: 1ms; }
+    #next-f7-app .message-wrapper.next-message-arrival { animation: none; }
+}

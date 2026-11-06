@@ -428,6 +428,7 @@
     }
 
     function showPrimary(viewName) {
+        if (global.NextChatUI && NextChatUI.leave(viewName)) return;
         if (global.NextRuntime && document.body.classList.contains('next-switching')) return;
         if (global.NextRuntime && typeof global.NextRuntime.applyOuterAppearance === 'function') global.NextRuntime.applyOuterAppearance();
         if (global.NextUI) global.NextUI.beforeNavigate();
@@ -469,6 +470,7 @@
         document.body.classList.remove('shiki-primary-view-active');
         document.body.classList.add('shiki-chat-view-active');
         setLegacyChatAvailable(true);
+        if (global.NextChatUI) NextChatUI.showChat();
         window.dispatchEvent(new Event('resize'));
         if (global._nextChatNeedsRender) { global._nextChatNeedsRender = false; renderMessages(Boolean(global._nextChatPreserveScroll)); global._nextChatPreserveScroll = false; }
         if (global.ConversationMetaStore && context) {
@@ -758,6 +760,7 @@
         if (!context || !global.ConversationMetaStore || !message) return;
         const sessionId = targetSessionId || message.conversationId || context.getCurrentSessionId();
         if (!sessionId) return;
+        if (global.NextNotifications) NextNotifications.received(message, sessionId).catch(error => console.warn('[Notifications] 提醒失败:', error));
         const summary = previewForMessage(message);
         const parsedTime = message.timestamp instanceof Date ? message.timestamp.getTime() : new Date(message.timestamp || Date.now()).getTime();
         const lastMessageAt = Number.isFinite(parsedTime) ? parsedTime : Date.now();

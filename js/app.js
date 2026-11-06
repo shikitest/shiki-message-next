@@ -202,6 +202,8 @@ await safeAwait(loadData());
                 });
                 appShellReady = true;
                 NextUI.initialize();
+                if (window.NextChatUI) NextChatUI.initialize();
+                if (window.NextNotifications) NextNotifications.initialize().catch(NextRuntime.report);
             } catch (error) {
                 console.error('[AppShell] 初始化失败，恢复原聊天界面:', error);
                 const shell = document.getElementById('shiki-app-shell');

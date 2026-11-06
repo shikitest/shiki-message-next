@@ -1,0 +1,15 @@
+.notification.next-message-notification {
+    z-index: 100100 !important; top: calc(12px + env(safe-area-inset-top));
+    width: min(350px, calc(100vw - 24px)); max-width: none; padding: 10px 8px 10px 12px;
+    border-radius: 16px; box-sizing: border-box; background: var(--primary-bg, #fff);
+}
+.next-message-notification button { border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; }
+.next-message-notification-open { display: flex; flex: 1; min-width: 0; gap: 10px; align-items: center; padding: 0; text-align: left; }
+.next-message-notification-open img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; flex: 0 0 38px; }
+.next-message-notification-open > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.next-message-notification-open strong { font-size: 14px; font-weight: 600; }
+.next-message-notification-open span span { font-size: 13px; opacity: .75; }
+.next-message-notification-open strong, .next-message-notification-open span span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.next-message-notification-close { flex: 0 0 36px; height: 40px; font-size: 22px !important; }
+.next-message-notification button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; border-radius: 5px; }
+@media (prefers-reduced-motion: reduce) { .notification.next-message-notification { animation: none; } }

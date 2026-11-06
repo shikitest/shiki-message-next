@@ -20,7 +20,7 @@
         const wrapper = document.getElementById && document.getElementById('typing-indicator-wrapper');
         if (!wrapper) return;
         const label = document.getElementById('typing-indicator-label');
-        const names = [...typingFriends.values()].filter(value => value.sessionId === String(SESSION_ID)).map(value => value.name);
+        const names = [...new Map([...typingFriends.values()].filter(value => value.sessionId === String(SESSION_ID)).map(value => [value.friendId, value.name])).values()];
         if (label) label.textContent = names.join('、') + ' 正在输入';
         const visible = names.length && document.body.classList.contains('shiki-chat-view-active');
         const inner = wrapper.querySelector && wrapper.querySelector('.typing-indicator');
@@ -156,8 +156,11 @@
         for (const [key, value] of typingFriends) {
             if (!scope || ((!scope.sessionId || value.sessionId === scope.sessionId) && (!scope.friendId || value.friendId === scope.friendId) && (!scope.source || value.source === scope.source))) typingFriends.delete(key);
         }
+        for (const [key, round] of userRounds) {
+            if (!scope || ((!scope.sessionId || round.sessionId === scope.sessionId) && (!scope.friendId || round.friendId === scope.friendId) && (!scope.source || round.source === scope.source))) userRounds.delete(key);
+        }
         if (!scope) { userRounds.clear(); readRounds.clear(); userReplyTimers.forEach(clearTimeout); userReplyTimers.clear(); }
-        else if (scope.sessionId && !scope.source) { userRounds.delete(scope.sessionId); readRounds.delete(scope.sessionId); }
+        else if (scope.sessionId && !scope.source) { readRounds.delete(scope.sessionId); }
         if (global._pendingReplyTimer) clearTimeout(global._pendingReplyTimer);
         global._pendingReplyTimer = null;
         const typing = document.getElementById && document.getElementById('typing-indicator-wrapper');
@@ -346,12 +349,54 @@
         }
         if (live(id) && document.body.classList.contains('shiki-chat-view-active')) playSound(sound);
         const sender = message.friendId && NextModel.profile(message.friendId);
-        if (!(context || contexts.get(id))?.prefs.muted && typeof global._sendPartnerNotification === 'function') global._sendPartnerNotification(message.sender, message.text || '[表情]', { sessionId: id, avatar: sender && sender.avatar });
+        if (!global.NextNotifications && !(context || contexts.get(id))?.prefs.muted && typeof global._sendPartnerNotification === 'function') global._sendPartnerNotification(message.sender, message.text || '[表情]', { sessionId: id, avatar: sender && sender.avatar });
+    }
+    // One actor lane per conversation: waiting -> sending -> idle. A burst
+    // never cancels work or redraws decisions. Only inputs AFTER the first
+    // outgoing message form one follow-up batch. Extra events belong to it too.
+    function roundKey(id, friendId) { return JSON.stringify([id, friendId]); }
+    function finishRound(round) {
+        if (round.configuring || round.pending || userRounds.get(round.key) !== round) return;
+        userRounds.delete(round.key);
+        if (round.nextContext && NextModel.conversation(round.sessionId)?.friendIds.includes(round.friendId) && !NextModel.profile(round.friendId)?.deleted) {
+            queueMember(round.sessionId, round.friendId, round.nextContext);
+        }
+    }
+    function roundTask(round, callback, delay) {
+        round.pending++;
+        return schedule(async () => {
+            try { if (userRounds.get(round.key) === round) await callback(); }
+            finally { round.pending--; finishRound(round); }
+        }, delay, round);
+    }
+    function beginRound(id, friendId, context, source) {
+        const key = roundKey(id, friendId);
+        const round = { key, sessionId: id, friendId, context, source: source || 'reply', phase: 'waiting', pending: 0, configuring: false, nextContext: null };
+        userRounds.set(key, round);
+        return round;
+    }
+    function mergeInput(round, context) {
+        if (round.phase === 'waiting') {
+            // Keep the original preferences, timing and identity snapshot. New
+            // inputs only update this batch's available quote candidates.
+            round.context.recent = context.recent;
+        } else round.nextContext = context;
+    }
+    function queueMember(id, friendId, context, delayOverride) {
+        const active = userRounds.get(roundKey(id, friendId));
+        if (active) { mergeInput(active, context); return; }
+        const round = beginRound(id, friendId, context);
+        const prefs = replyPreferences(null, context.prefs);
+        const delay = delayOverride === undefined ? prefs.replyDelayMin + Math.random() * (prefs.replyDelayMax - prefs.replyDelayMin) : delayOverride;
+        roundTask(round, () => reply({ sessionId: id, friendId, context: round.context, round }), delay);
+    }
+    function queueInput(id, context, delayOverride) {
+        for (const f of NextModel.identities(id)) {
+            if (!f.deleted && context.friendIds.includes(f.id)) queueMember(id, f.id, context, delayOverride);
+        }
     }
     function userSent() {
-        const id = String(SESSION_ID), context = captureContext(id), prefs = replyPreferences(null, context.prefs);
-        const prior = userRounds.get(id);
-        if (prior) { clearTimeout(prior); replyTimers.delete(prior); taskScopes.delete(prior); }
+        const id = String(SESSION_ID), context = captureContext(id);
         const previousRead = readRounds.get(id);
         if (previousRead) { clearTimeout(previousRead); replyTimers.delete(previousRead); taskScopes.delete(previousRead); }
         const readTimer = schedule(async () => {
@@ -361,22 +406,11 @@
             else { await NextMessageStore.markRead(id); if (live(id)) { messages.forEach(m => { if (m.sender === 'user') m.status = 'read'; }); _updateReadReceiptsDOM(); } }
         }, 1500 + Math.random() * 2500, { sessionId: id });
         readRounds.set(id, readTimer);
-        // Debounce only the not-yet-started round of this conversation. Other
-        // conversations and already-started rounds keep their own tasks.
-        const timer = schedule(() => {
-            userRounds.delete(id);
-            if (!NextModel.conversation(id)) return;
-            for (const f of NextModel.identities(id)) {
-                if (f.deleted || !context.friendIds.includes(f.id)) continue;
-                if (prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) continue;
-                schedule(() => reply({ sessionId: id, friendId: f.id, context, probabilityChecked: true }), Math.random() * (prefs.replyDelayMax - prefs.replyDelayMin), { sessionId: id, friendId: f.id });
-            }
-        }, prefs.replyDelayMin, { sessionId: id });
-        userRounds.set(id, timer);
+        queueInput(id, context);
     }
     function deferReply(milliseconds) {
         const id = String(SESSION_ID), context = captureContext(id);
-        return schedule(() => reply({ sessionId: id, context }), milliseconds, { sessionId: id });
+        queueInput(id, context, milliseconds);
     }
     function reply(trigger = {}) {
         const id = String(trigger.sessionId || SESSION_ID || ''), c = NextModel.conversation(id);
@@ -387,15 +421,32 @@
             const prefs = replyPreferences(f, context.prefs);
             if (context.friendIds && !context.friendIds.includes(f.id)) continue;
             if (f.deleted || (trigger && trigger.friendId && trigger.friendId !== f.id)) continue;
-            if (!(trigger && trigger.probabilityChecked) && prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) continue;
-            const scope = { sessionId: id, friendId: f.id, source: trigger.source || 'reply' };
+            const active = userRounds.get(roundKey(id, f.id));
+            if (active && active !== trigger.round) {
+                if (trigger.source !== 'auto') mergeInput(active, context);
+                continue;
+            }
+            const round = trigger.round || beginRound(id, f.id, context, trigger.source);
+            round.configuring = true;
+            try {
+            if (!(trigger && trigger.probabilityChecked) && prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) {
+                continue;
+            }
+            const emit = async (message, sound = 'message') => {
+                round.phase = 'sending';
+                await deliver(id, message, sound, context);
+            };
             const epoch = lifecycleEpoch, sessionEpoch = sessionEpochs.get(id), friendEpoch = friendEpochs.get(f.id);
             const valid = () => { const identity = NextModel.profile(f.id), conversation = NextModel.conversation(id); return epoch === lifecycleEpoch && sessionEpoch === sessionEpochs.get(id) && friendEpoch === friendEpochs.get(f.id) && (!trigger.source || trigger.source !== 'auto' || autoConfigs.get(id)?.enabled) && identity && !identity.deleted && conversation && conversation.friendIds.includes(f.id); };
-            if (Math.random() < 0.03 && valid() && typeof global._triggerPartnerPoke === 'function') global._triggerPartnerPoke({ id: f.id, name: f.remark || f.name, avatar: f.avatar }, { pokes: context.pokes, groups: context.pokeGroups, emit: message => deliver(id, { ...message, friendId: f.id }, 'partner_poke', context).catch(report) });
+            if (Math.random() < 0.03 && valid() && typeof global._triggerPartnerPoke === 'function') global._triggerPartnerPoke({ id: f.id, name: f.remark || f.name, avatar: f.avatar }, { pokes: context.pokes, groups: context.pokeGroups, emit: message => {
+                round.pending++;
+                return emit({ ...message, friendId: f.id }, 'partner_poke').catch(report).finally(() => { round.pending--; finishRound(round); });
+            } });
             if (Math.random() < 0.01 && global.PhotoAlbum && typeof PhotoAlbum.generateRandomPhotoForOwner === 'function') {
+                round.pending++;
                 PhotoAlbum.generateRandomPhotoForOwner({ ownerType: 'partner', ownerId: f.id, ownerName: f.name, source: 'random', conversationId: id }).then(photo => {
-                    if (photo && photo.image && valid()) return deliver(id, { id: crypto.randomUUID(), sender: f.name, friendId: f.id, groupMemberId: c.type === 'group' ? f.id : null, image: photo.image, text: '', timestamp: new Date(), type: 'normal', status: 'received' }, 'message', context);
-                }).catch(report);
+                    if (photo && photo.image && valid()) return emit({ id: crypto.randomUUID(), sender: f.name, friendId: f.id, groupMemberId: c.type === 'group' ? f.id : null, image: photo.image, text: '', timestamp: new Date(), type: 'normal', status: 'received' });
+                }).catch(report).finally(() => { round.pending--; finishRound(round); });
             }
             const enabledCards = friend => {
                 const disabled = new Set(friend.disabledCards || []);
@@ -405,11 +456,11 @@
             if (prefs.textGenerationMode === 'card' && !enabledCards(f).length) continue;
             const count = Math.random() < 0.75 ? 1 : (Math.random() < 0.95 ? 2 : 3);
             const typingKey = id + ':' + f.id + ':' + crypto.randomUUID();
-            if (prefs.typingIndicatorEnabled) { typingFriends.set(typingKey, { ...scope, name: f.remark || f.name }); refreshTyping(); }
+            if (prefs.typingIndicatorEnabled) { typingFriends.set(typingKey, { sessionId: id, friendId: f.id, source: round.source, name: f.remark || f.name }); refreshTyping(); }
             let delay = 0;
             for (let i = 0; i < count; i++) {
                 delay += prefs.replyDelayMin + Math.random() * (prefs.replyDelayMax - prefs.replyDelayMin);
-                schedule(async () => {
+                roundTask(round, async () => {
                 if (i === count - 1) { typingFriends.delete(typingKey); refreshTyping(); }
                 const current = NextModel.friend(f.id); const conversation = NextModel.conversation(id);
                 if (!valid() || !current || !conversation) return;
@@ -431,17 +482,18 @@
                         message.replyTo = { id: quoted.id, text: quoted.text, sender: quoted.sender };
                     }
                 }
-                await deliver(id, message, 'message', context);
+                await emit(message);
                 const delayedExtra = (payload, milliseconds) => {
-                    schedule(() => { if (valid()) return deliver(id, { ...message, ...payload, replyTo: null, id: crypto.randomUUID(), timestamp: new Date() }, 'message', context); }, milliseconds, scope);
+                    roundTask(round, () => { if (valid()) return emit({ ...message, ...payload, replyTo: null, id: crypto.randomUUID(), timestamp: new Date() }); }, milliseconds);
                 };
                 let disabledStickers = new Set();
                 try { disabledStickers = new Set(JSON.parse(NextStorage.local.getItem('disabledStickerItems') || '[]')); } catch (_) {}
                 const enabledStickers = context.stickers.filter(s => !disabledStickers.has(s));
                 if (enabledStickers.length && Math.random() < 0.2) delayedExtra({ text: '', image: enabledStickers[Math.floor(Math.random() * enabledStickers.length)], imageKind: 'sticker' }, 400 + Math.random() * 600);
                 if (separateEmoji) delayedExtra({ text: separateEmoji }, 300 + Math.random() * 400);
-            }, delay, scope);
+            }, delay);
             }
+            } finally { round.configuring = false; finishRound(round); }
         }
     }
     function configureAuto(id, value) {
@@ -459,6 +511,7 @@
             if (!NextModel.conversation(id)) { autoConfigs.delete(id); continue; }
             if (!config.enabled) continue;
             for (const f of NextModel.identities(id)) {
+                if (userRounds.has(roundKey(id, f.id))) continue;
                 if (f.deleted || Math.random() >= autoChance(config.frequency, Math.max(0, elapsed) / 1000)) continue;
                 // The callback is a reaction delay, never a pre-generated schedule
                 // of future spontaneous messages.

@@ -497,6 +497,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 window._sendPartnerNotification = function(title, body, identity) {
+    // Next routes all arrivals through noteMessageSaved after persistence.
+    // Legacy call sites must not emit a second notification for the same event.
+    if (window.NextNotifications) return Promise.resolve(false);
     try {
         if (NextStorage.local.getItem('notifEnabled') !== '1') return Promise.resolve(false);
         if (!('Notification' in window)) return Promise.resolve(false);
@@ -521,6 +524,13 @@ window._sendPartnerNotification = function(title, body, identity) {
 
 window.handleNotifToggle = function(checkbox) {
     var statusEl = document.getElementById('notif-status-text');
+    if (window.NextNotifications) {
+        NextNotifications.setSystemEnabled(checkbox.checked).then(function(status) {
+            checkbox.checked = status.system && status.permission === 'granted';
+            if (statusEl) statusEl.textContent = checkbox.checked ? '已开启后台系统消息通知' : status.permission === 'denied' ? '浏览器已拒绝通知权限，请到系统或浏览器设置中允许' : '系统消息通知已关闭';
+        }).catch(function(error) { checkbox.checked = false; if (statusEl) statusEl.textContent = error.message; });
+        return;
+    }
     if (!('Notification' in window)) {
         checkbox.checked = false;
         if (statusEl) statusEl.textContent = '⚠️ 您的浏览器不支持通知功能，请更换浏览器';
