@@ -65,7 +65,7 @@
             if (event.target.closest('.message-meta-actions')) { suppressClick = false; setTimeout(closeMenu, 0); return; }
             if (suppressClick) { event.preventDefault(); event.stopImmediatePropagation(); suppressClick = false; }
         }, true);
-        chat.addEventListener('scroll', closeMenu, { passive: true });
+        chat.addEventListener('scroll', () => { closeMenu(); const hint = document.getElementById('next-new-message-hint'); if (hint && chat.scrollHeight - chat.scrollTop - chat.clientHeight < 90) hint.hidden = true; }, { passive: true });
         document.addEventListener('pointerdown', event => {
             if (!activeMenu || activeMenu.contains(event.target)) return;
             dismissTarget = event.target;
@@ -119,12 +119,17 @@
         camera.addEventListener('click', () => { close(); const file = document.getElementById('image-input'); file.setAttribute('capture', 'environment'); file.click(); });
         document.getElementById('attachment-btn').addEventListener('click', () => { close(); document.getElementById('image-input').removeAttribute('capture'); }, true);
         const viewport = global.visualViewport;
-        const resize = () => {
+        let resizeFrame = null, lastLift = '', lastHeight = '';
+        const measure = () => {
+            resizeFrame = null;
+            if (!document.body.classList.contains('shiki-chat-view-active')) return;
             const lift = viewport ? Math.max(0, innerHeight - viewport.height - viewport.offsetTop) : 0;
-            document.documentElement.style.setProperty('--next-keyboard-lift', lift > 100 ? lift + 'px' : '0px');
             const height = document.querySelector('.input-area-wrapper').getBoundingClientRect().height;
-            document.documentElement.style.setProperty('--next-compose-height', height + 'px');
+            const liftValue = lift > 100 ? Math.round(lift) + 'px' : '0px', heightValue = Math.round(height) + 'px';
+            if (lastLift !== liftValue) { lastLift = liftValue; document.documentElement.style.setProperty('--next-keyboard-lift', liftValue); }
+            if (lastHeight !== heightValue) { lastHeight = heightValue; document.documentElement.style.setProperty('--next-compose-height', heightValue); }
         };
+        const resize = () => { if (resizeFrame === null) resizeFrame = requestAnimationFrame(measure); };
         if (viewport) { viewport.addEventListener('resize', resize); viewport.addEventListener('scroll', resize); }
         global.addEventListener('resize', resize);
         if (global.ResizeObserver) new ResizeObserver(resize).observe(document.querySelector('.input-area-wrapper'));

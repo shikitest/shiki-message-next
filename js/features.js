@@ -518,7 +518,8 @@ function showEmojiTab() {
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
                 if (window._pendingReplyTimer) clearTimeout(window._pendingReplyTimer);
-                window._pendingReplyTimer = setTimeout(() => { window._pendingReplyTimer = null; simulateReply(); }, randomDelay);
+                if (window.NextRuntime) NextRuntime.deferReply(randomDelay);
+                else window._pendingReplyTimer = setTimeout(() => { window._pendingReplyTimer = null; simulateReply(); }, randomDelay);
             }
             document.getElementById('user-sticker-picker').classList.remove('active');
         };
@@ -574,7 +575,7 @@ function showPokeTab() {
             document.getElementById('user-sticker-picker').classList.remove('active');
             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
             const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-            setTimeout(simulateReply, randomDelay);
+            if (window.NextRuntime) NextRuntime.deferReply(randomDelay); else setTimeout(simulateReply, randomDelay);
         };
         area.appendChild(btn);
     });
@@ -792,7 +793,7 @@ function showPokeTab() {
                             updateReplyPreview();
                             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                             const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                            setTimeout(simulateReply, randomDelay);
+                            if (window.NextRuntime) NextRuntime.deferReply(randomDelay); else setTimeout(simulateReply, randomDelay);
 
 
                             closeModal();

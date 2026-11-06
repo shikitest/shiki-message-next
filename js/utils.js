@@ -430,6 +430,7 @@ function applyGlobalThemeCss(cssCode) {
 }
 
 async function exportAllData() {
+    if (window.NextRuntime && window.NextUI) return NextUI.openBackup();
     try {
         if (navigator.storage && typeof navigator.storage.estimate === 'function') {
             try {

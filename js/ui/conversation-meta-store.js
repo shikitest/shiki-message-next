@@ -27,6 +27,7 @@
         return {
             type: input.type === 'group' ? 'group' : 'direct',
             pinned: input.pinned === true,
+            unread: Number.isFinite(input.unread) ? Math.max(0, input.unread) : 0,
             avatarRef: typeof input.avatarRef === 'string' ? input.avatarRef : null,
             updatedAt: finiteTime(input.updatedAt),
             lastMessagePreview: typeof input.lastMessagePreview === 'string'
@@ -79,7 +80,8 @@
         if (!id) throw new Error('A session id is required');
         await load();
         writeChain = writeChain.catch(function () {}).then(async function () {
-            const nextEntry = sanitize(Object.assign({}, cache[id] || {}, patch || {}));
+            const changes = typeof patch === 'function' ? patch(get(id)) : patch;
+            const nextEntry = sanitize(Object.assign({}, cache[id] || {}, changes || {}));
             const nextCache = Object.assign(Object.create(null), cache, { [id]: nextEntry });
             await requireStorage().setItem(storageKey(), nextCache);
             cache = nextCache;

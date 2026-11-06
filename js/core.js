@@ -376,7 +376,8 @@ const loadData = async () => {
         const getVal = (index) => results[index].status === 'fulfilled' ? results[index].value : null;
 
         const savedSettings = getVal(0);
-        const savedMessages = getVal(1);
+        if (typeof _sessionSavedAux !== 'undefined') _sessionSavedAux.delete(targetSessionId);
+        const savedMessages = window.NextMessageStore ? NextMessageStore.merge(targetSessionId, getVal(1) || []) : getVal(1);
         const savedBgGallery = getVal(2);
         const savedCustomReplies = getVal(3);
         const savedPokes = getVal(4);
@@ -687,6 +688,16 @@ function _tryRecoverFromBackup() {
 }
 
 const _sessionSaveQueues = new Map();
+// Message appends should not rewrite unchanged Base64 galleries/sticker pools.
+// Invalidate on load/import; record only successful auxiliary writes.
+const _sessionSavedAux = new Map();
+window.enqueueSessionWrite = (id, operation) => {
+    const queued = (_sessionSaveQueues.get(id) || Promise.resolve()).catch(() => {}).then(operation);
+    _sessionSaveQueues.set(id, queued);
+    const cleanup = () => { if (_sessionSaveQueues.get(id) === queued) _sessionSaveQueues.delete(id); };
+    queued.then(cleanup, cleanup);
+    return queued;
+};
 
 const saveData = (sessionIdOverride) => {
     const targetSessionId = String(sessionIdOverride || SESSION_ID || '');
@@ -702,7 +713,7 @@ const saveData = (sessionIdOverride) => {
     const sessionKey = key => `${APP_PREFIX}${targetSessionId}_${key}`;
     const saveSnapshot = {
         settings: Object.assign({}, settings),
-        customReplies: Array.isArray(customReplies) ? customReplies.slice() : [],
+        customReplies: !window.NextRuntime && Array.isArray(customReplies) ? customReplies.slice() : [],
         customReplyGroups: Array.isArray(window.customReplyGroups) ? window.customReplyGroups.slice() : [],
         customPokeGroups: Array.isArray(window.customPokeGroups) ? window.customPokeGroups.slice() : [],
         customStatusGroups: Array.isArray(window.customStatusGroups) ? window.customStatusGroups.slice() : [],
@@ -714,7 +725,9 @@ const saveData = (sessionIdOverride) => {
         customIntros: Array.isArray(customIntros) ? customIntros.slice() : [],
         stickerLibrary: Array.isArray(stickerLibrary) ? stickerLibrary.slice() : [],
         myStickerLibrary: Array.isArray(myStickerLibrary) ? myStickerLibrary.slice() : [],
-        messages: Array.isArray(messages) ? messages.slice() : []
+        messages: Array.isArray(messages) ? messages.slice() : [],
+        customThemes: JSON.parse(JSON.stringify(customThemes)),
+        themeSchemes: JSON.parse(JSON.stringify(themeSchemes))
     };
     saveSnapshot.partnerAvatarSrc = (() => {
         try {
@@ -747,9 +760,9 @@ const saveData = (sessionIdOverride) => {
         { key: 'customIntros',           val: () => localforage.setItem(sessionKey('customIntros'), saveSnapshot.customIntros) },
         { key: 'stickerLibrary',         val: () => localforage.setItem(sessionKey('stickerLibrary'), saveSnapshot.stickerLibrary) },
         { key: 'myStickerLibrary',       val: () => localforage.setItem(sessionKey('myStickerLibrary'), saveSnapshot.myStickerLibrary) },
-        { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, customThemes) },
-        { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, themeSchemes) },
-        { key: 'chatMessages',           val: () => localforage.setItem(sessionKey('chatMessages'), saveSnapshot.messages) },
+        { key: 'customThemes',           val: () => localforage.setItem(`${APP_PREFIX}customThemes`, saveSnapshot.customThemes) },
+        { key: 'themeSchemes',           val: () => localforage.setItem(`${APP_PREFIX}themeSchemes`, saveSnapshot.themeSchemes) },
+        { key: 'chatMessages',           val: () => localforage.setItem(sessionKey('chatMessages'), window.NextMessageStore ? NextMessageStore.merge(targetSessionId, saveSnapshot.messages) : saveSnapshot.messages) },
     ];
 
     const partnerAvatarSrc = saveSnapshot.partnerAvatarSrc;
@@ -767,8 +780,17 @@ const saveData = (sessionIdOverride) => {
         promises.push({ key: 'myAvatar', val: () => localforage.removeItem(sessionKey('myAvatar')) });
     }
 
-    const results = await Promise.allSettled(promises.map(p => {
-        try { return p.val(); }
+    if (!_sessionSavedAux.has(targetSessionId)) _sessionSavedAux.set(targetSessionId, new Map());
+    const previousAux = _sessionSavedAux.get(targetSessionId);
+    const unchanged = (a, b) => Array.isArray(a) && Array.isArray(b) ? a.length === b.length && a.every((value, i) => value === b[i]) : a === b;
+    const results = await Promise.allSettled(promises.map(async p => {
+        try {
+            if (p.key === 'chatMessages') return await p.val();
+            const value = p.key === 'chatSettings' ? saveSnapshot.settings : p.key === 'partnerAvatar' ? saveSnapshot.partnerAvatarSrc : p.key === 'myAvatar' ? saveSnapshot.myAvatarSrc : saveSnapshot[p.key];
+            const signature = Array.isArray(value) && value.every(v => typeof v === 'string') ? value.slice() : JSON.stringify(value);
+            if (previousAux.has(p.key) && unchanged(previousAux.get(p.key), signature)) return;
+            const result = await p.val(); previousAux.set(p.key, signature); return result;
+        }
         catch(e) { return Promise.reject(e); }
     }));
 
@@ -788,14 +810,7 @@ const saveData = (sessionIdOverride) => {
     return { failed };
     };
 
-    const previous = _sessionSaveQueues.get(targetSessionId) || Promise.resolve();
-    const queued = previous.catch(() => {}).then(performSave);
-    _sessionSaveQueues.set(targetSessionId, queued);
-    queued.then(() => {
-        if (_sessionSaveQueues.get(targetSessionId) === queued) _sessionSaveQueues.delete(targetSessionId);
-    }, () => {
-        if (_sessionSaveQueues.get(targetSessionId) === queued) _sessionSaveQueues.delete(targetSessionId);
-    });
+    const queued = window.enqueueSessionWrite(targetSessionId, performSave);
     return window.SessionRuntimeStore
         ? window.SessionRuntimeStore.save(targetSessionId, function () { return queued; })
         : queued;
@@ -973,8 +988,8 @@ if (customIntros && customIntros.length > 0) {
 
 function manageAutoSendTimer() {
     if (window.NextRuntime) {
-        settings.autoSendEnabled = false;
         if (window.RollingMessageScheduler) window.RollingMessageScheduler.stop({ clear: true });
+        if (window.NextRuntime.configureAuto) window.NextRuntime.configureAuto(String(SESSION_ID), settings);
         return;
     }
     if (autoSendTimer) {
@@ -1499,10 +1514,19 @@ const addMessage = (message) => {
     if (!(message.timestamp instanceof Date)) message.timestamp = new Date(message.timestamp);
 
     const container = DOMElements.chatContainer;
+    const shouldFollow = message.sender === 'user' || container.scrollHeight - container.scrollTop - container.clientHeight < 90;
     const wasEmpty = messages.length === 0;
 
     const prevMsg = messages.length > 0 ? messages[messages.length - 1] : null;
     messages.push(message);
+    const persistMessage = () => throttledSaveData(saveResult => {
+        if (saveResult && Array.isArray(saveResult.failed) && saveResult.failed.includes('chatMessages')) return;
+        if (window.ShikiAppShell) window.ShikiAppShell.noteMessageSaved(message, message.conversationId);
+    });
+    if (window.NextRuntime && (!document.body.classList.contains('shiki-chat-view-active') || document.hidden)) {
+        window._nextChatPreserveScroll = !shouldFollow;
+        window._nextChatNeedsRender = true; persistMessage(); return;
+    }
 
     if (
         window.TranslationHelper &&
@@ -1516,6 +1540,7 @@ const addMessage = (message) => {
     }
 
     if (window._shikiMessageRenderWindow) {
+        if (!shouldFollow) { persistMessage(); showNewMessageHint(); return; }
         window._shikiMessageRenderWindow = null;
         displayedMessageCount = HISTORY_BATCH_SIZE;
         renderMessages(false);
@@ -1573,6 +1598,11 @@ const addMessage = (message) => {
     }
 
     const newMsgFragment = createMessageFragment(message, prevMsg, null, lastSenderRef);
+    const arrival = newMsgFragment.querySelector('.message-wrapper');
+    if (arrival) arrival.classList.add('next-message-arrival');
+    newMsgFragment.querySelectorAll('img').forEach(image => image.addEventListener('load', () => {
+        if (shouldFollow && container.scrollHeight - container.scrollTop - container.clientHeight < 180) container.scrollTop = container.scrollHeight;
+    }, { once: true }));
 
     const spacer = container.querySelector('div[style*="flex: 1"]');
     if (spacer && spacer === container.lastElementChild) {
@@ -1582,8 +1612,10 @@ const addMessage = (message) => {
     }
 
     requestAnimationFrame(() => {
-        container.scrollTop = container.scrollHeight;
+        if (shouldFollow) container.scrollTop = container.scrollHeight;
     });
+
+    if (!shouldFollow) showNewMessageHint();
 
     throttledSaveData(saveResult => {
         if (saveResult && Array.isArray(saveResult.failed) && saveResult.failed.includes('chatMessages')) return;
@@ -1592,6 +1624,16 @@ const addMessage = (message) => {
         }
     });
 };
+
+function showNewMessageHint() {
+    let hint = document.getElementById('next-new-message-hint');
+    if (!hint) {
+        hint = document.createElement('button'); hint.id = 'next-new-message-hint'; hint.type = 'button'; hint.textContent = '新消息 ↓';
+        hint.onclick = () => { window._shikiMessageRenderWindow = null; displayedMessageCount = HISTORY_BATCH_SIZE; renderMessages(); hint.hidden = true; };
+        document.body.append(hint);
+    }
+    hint.hidden = false;
+}
 
         window._addCallEvent = (icon, label, detail) => {
             addMessage({
@@ -1675,11 +1717,11 @@ const addMessage = (message) => {
         function updateReplyPreview() { window.updateReplyPreview(); }
 
         // ── 对方拍一拍核心逻辑（提取为独立函数，供随机触发和测试指令共用）──
-        window._triggerPartnerPoke = function(groupMember = null) {
+        window._triggerPartnerPoke = function(groupMember = null, scope = null) {
             let pokeAction = null;
 
-            const groups = window.customPokeGroups || [];
-            const allPokes = (typeof customPokes !== 'undefined' ? customPokes : []) || [];
+            const groups = scope ? scope.groups : window.customPokeGroups || [];
+            const allPokes = scope ? scope.pokes : (typeof customPokes !== 'undefined' ? customPokes : []) || [];
 
             const enabledGroups = groups.filter(function(g) {
                 return !g.disabled && Array.isArray(g.items) && g.items.length > 0;
@@ -1731,6 +1773,8 @@ if (
             const pokeText = (typeof window._formatPartnerPokeText === 'function')
                 ? window._formatPartnerPokeText(`${pokeSenderName} ${pokeAction}`)
                 : `${pokeSenderName} ${pokeAction}`;
+
+            if (scope) { scope.emit({ id: crypto.randomUUID(), sender: pokeSenderName, text: pokeText, timestamp: new Date(), type: 'system' }); return; }
 
             addMessage({ id: Date.now(), text: pokeText, timestamp: new Date(), type: 'system' });
             if (typeof playSound === 'function') playSound('partner_poke');
@@ -3034,6 +3078,7 @@ function showModal(modalElement, focusElement = null) {
         }
 
         function exportChatHistory() {
+            if (window.NextRuntime && window.NextUI) return NextUI.openBackup();
             const overlay = document.createElement('div');
             overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
             overlay.innerHTML = `

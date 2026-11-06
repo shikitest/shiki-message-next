@@ -349,6 +349,8 @@
         legacy.hidden = !meta.legacyGroup;
         item.querySelector('.shiki-conversation-preview').textContent = meta.lastMessagePreview || '已有会话';
         item.querySelector('time').textContent = formatDate(meta.lastMessageAt || meta.updatedAt || session.createdAt);
+        const unread = item.querySelector('.next-unread-badge');
+        unread.hidden = !meta.unread; unread.textContent = meta.unread > 99 ? '99+' : String(meta.unread || '');
         const pin = item.querySelector('.shiki-pin-button');
         pin.dataset.sessionId = String(session.id);
         pin.classList.toggle('active', Boolean(meta.pinned));
@@ -370,6 +372,7 @@
         body.append(titleLine, el('span', 'shiki-conversation-preview'));
         const side = el('span', 'shiki-conversation-side');
         side.appendChild(el('time'));
+        side.appendChild(el('span', 'next-unread-badge'));
         const pin = button('', 'toggle-pin', 'fa-thumbtack');
         pin.className = 'shiki-pin-button';
         side.appendChild(pin);
@@ -466,6 +469,12 @@
         document.body.classList.remove('shiki-primary-view-active');
         document.body.classList.add('shiki-chat-view-active');
         setLegacyChatAvailable(true);
+        window.dispatchEvent(new Event('resize'));
+        if (global._nextChatNeedsRender) { global._nextChatNeedsRender = false; renderMessages(Boolean(global._nextChatPreserveScroll)); global._nextChatPreserveScroll = false; }
+        if (global.ConversationMetaStore && context) {
+            const id = String(context.getCurrentSessionId());
+            if (ConversationMetaStore.get(id).unread) ConversationMetaStore.update(id, { unread: 0 }).then(() => renderConversations()).catch(error => notify('未读状态保存失败', 'warning'));
+        }
         if (global.ChatDetail && typeof global.ChatDetail.refresh === 'function') global.ChatDetail.refresh();
     }
 
@@ -745,22 +754,23 @@
         return { text: text ? text.slice(0, 40) : '[消息]', type: type };
     }
 
-    async function noteMessageSaved(message) {
+    async function noteMessageSaved(message, targetSessionId) {
         if (!context || !global.ConversationMetaStore || !message) return;
-        const sessionId = context.getCurrentSessionId();
+        const sessionId = targetSessionId || message.conversationId || context.getCurrentSessionId();
         if (!sessionId) return;
         const summary = previewForMessage(message);
         const parsedTime = message.timestamp instanceof Date ? message.timestamp.getTime() : new Date(message.timestamp || Date.now()).getTime();
         const lastMessageAt = Number.isFinite(parsedTime) ? parsedTime : Date.now();
         try {
-            const existing = global.ConversationMetaStore.get(sessionId);
-            if (existing.lastMessageAt && existing.lastMessageAt > lastMessageAt) return;
-            await global.ConversationMetaStore.update(sessionId, {
+            await global.ConversationMetaStore.update(sessionId, existing => ({
+                ...(existing.lastMessageAt > lastMessageAt ? {} : {
                 lastMessagePreview: summary.text,
                 lastMessageType: summary.type,
                 lastMessageAt: lastMessageAt,
-                updatedAt: lastMessageAt
-            });
+                }),
+                updatedAt: Math.max(lastMessageAt, existing.updatedAt || 0),
+                unread: message.sender !== 'user' && (document.hidden || !document.body.classList.contains('shiki-chat-view-active') || String(context.getCurrentSessionId()) !== String(sessionId)) ? existing.unread + 1 : existing.unread
+            }));
             if (root && !root.hidden && activeView === 'conversations') renderConversations(root.querySelector('#shiki-conversation-search-input').value);
         } catch (error) {
             console.warn('[AppShell] 会话摘要保存失败，消息本身未受影响:', error);

@@ -258,14 +258,56 @@
         const id = String(SESSION_ID || ''), conversation = NextModel.conversation(id);
         const body = start('当前聊天 · 数据管理', 'backup', id);
         if (!conversation) { body.append(e('p', 'next-note', '请从聊天列表先打开一个会话，再管理该聊天的数据。')); return; }
-        body.append(e('p', 'next-note', '全量备份只包含当前聊天、会话设置与该聊天成员的共享好友资料快照（含头像）。恢复好友快照会影响所有引用该好友的聊天，并需单独确认；其它会话与全站设置不会纳入。旧站备份不受影响。'));
-        body.append(button('导出当前聊天全量备份', 'export-conversation', id), button('导出聊天记录（仅消息）', 'export-messages', id));
+        body.append(e('p', 'next-note', '当前聊天备份包含消息文字、会话设置与该聊天成员的共享好友资料快照（含头像）。恢复好友快照会影响所有引用该好友的聊天，并需单独确认；其它会话与全站设置不会纳入。消息媒体不在此备份范围内。'));
+        body.append(button('导出当前聊天备份（不含消息媒体）', 'export-conversation', id), button('导出聊天记录（仅消息）', 'export-messages', id));
+        body.append(button('大记录分卷导出（仅消息）', 'export-volumes', id));
         body.append(field('导入当前聊天备份（仅同一会话 ID 与成员）', 'next-import-file', 'file'));
         body.querySelector('#next-import-file').accept = '.json,application/json';
-        body.append(e('p', 'next-note', '备份包含好友资料快照中的头像字段；背景图库、贴图媒体、消息内图片/音视频/附件载荷与共同活动媒体不包含，消息以文字占位保留。单条导出文件上限 10MB。导入不会按名称匹配，也不会清理其它聊天、全站设置或旧站数据。目标聊天原有的未纳入媒体会保留。'));
+        body.append(e('p', 'next-note', '备份包含好友资料快照中的头像字段；背景图库、贴图媒体、消息内图片/音视频/附件载荷与共同活动媒体不包含，消息以文字占位保留。单文件上限 10MB；消息很多时可选择分卷，确认上一卷已保存后下载下一卷。分卷仅含消息，不代替会话设置备份。导入不会按名称匹配，也不会清理其它聊天、全站设置或旧站数据。'));
     }
     function openBackgroundSettings() {
         return openGlobals();
+    }
+    async function downloadBackup(kind, id) {
+        const controller = new AbortController();
+        const overlay = e('div', 'next-export-overlay'); overlay.setAttribute('role', 'dialog'); overlay.setAttribute('aria-modal', 'true'); overlay.setAttribute('aria-label', '导出备份');
+        const card = e('div', 'next-export-card'), title = e('strong', '', '正在生成备份');
+        const status = e('p', 'next-note', '正在读取当前聊天，原记录不会被修改。'); status.setAttribute('role', 'status');
+        const cancel = e('button', 'next-export-cancel', '取消'); cancel.type = 'button';
+        cancel.onclick = () => { controller.abort(); cancel.disabled = true; status.textContent = '正在取消…'; };
+        card.append(title, status, cancel); overlay.append(card); document.body.append(overlay);
+        let url;
+        try {
+            const blob = await NextBackup.exportFile(kind, id, { signal: controller.signal, onProgress: text => { status.textContent = text; } });
+            url = URL.createObjectURL(blob);
+            const link = e('a', '', '再次下载'); link.href = url; link.download = 'shiki-' + (kind === 'conversation' ? 'chat-' : 'messages-') + id + '-' + Date.now() + '.json';
+            card.append(link); link.click();
+            title.textContent = '备份已生成';
+            status.textContent = '已请求下载 ' + (blob.size / 1048576).toFixed(2) + ' MB 文件。请确认文件已保存；媒体载荷不包含在此备份中。';
+            cancel.disabled = false; cancel.textContent = '关闭'; cancel.onclick = () => overlay.remove();
+            // Safari may start reading a Blob URL after the click handler returns.
+            setTimeout(() => { URL.revokeObjectURL(url); link.remove(); if (overlay.isConnected) { title.textContent = '备份下载已请求'; status.textContent = '请在下载列表检查文件；如需重试，请关闭后重新导出。'; } }, 60000);
+        } catch (error) { if (url) URL.revokeObjectURL(url); overlay.remove(); throw error; }
+    }
+    async function downloadMessageVolumes(id) {
+        const exporter = await NextBackup.createMessageVolumes(id);
+        const overlay = e('div', 'next-export-overlay'), card = e('div', 'next-export-card');
+        const status = e('p', 'next-note', '共 ' + exporter.total + ' 条消息。每卷约 4MB 或最多 10000 条，不包含媒体载荷。请逐卷保存。'); status.setAttribute('role', 'status');
+        const next = e('button', '', '下载第 1 卷'), closeButton = e('button', '', '结束导出');
+        let url = null, controller = null;
+        card.append(e('strong', '', '聊天记录分卷导出'), status, next, closeButton); overlay.append(card); document.body.append(overlay);
+        closeButton.onclick = () => { controller?.abort(); overlay.remove(); if (url) setTimeout(() => URL.revokeObjectURL(url), 60000); };
+        next.onclick = async () => {
+            next.disabled = true; controller = new AbortController();
+            try {
+                const volume = await exporter.next({ signal: controller.signal, onProgress: text => { status.textContent = text; } });
+                if (url) URL.revokeObjectURL(url);
+                url = URL.createObjectURL(volume.blob);
+                const link = e('a'); link.href = url; link.download = 'shiki-messages-' + id + '-part-' + volume.part + '.json'; link.hidden = true; card.append(link); link.click(); link.remove();
+                status.textContent = '第 ' + volume.part + ' 卷已请求下载；已处理 ' + volume.processed + ' / ' + volume.total + ' 条。' + (volume.done ? '全部卷已生成，请确认文件均已保存。' : '确认此卷已保存后，再下载下一卷。');
+                next.textContent = volume.done ? '已完成' : '下载第 ' + (volume.part + 1) + ' 卷'; next.disabled = volume.done;
+            } catch (error) { status.textContent = String(error.message || error) + '；原数据未改动。'; next.disabled = false; }
+        };
     }
     async function handle(event) {
         const node = event.target.closest('[data-next-action]'); if (!node) return;
@@ -344,7 +386,7 @@
                 const f = await NextModel.saveFriend(input); await NextRuntime.sync(); NextRuntime.applyCurrent(); renderFriends(); ShikiAppShell.refresh(); openProfile(f.id); showNotification('已保存', 'success');
             }
             if (action === 'chat') { const c = await NextModel.openDirect(id); close(); await NextRuntime.open(c.id); }
-            if (action === 'delete-friend' && confirm('删除好友并停止自动发言？历史聊天和字卡会保留。')) { await NextModel.deleteFriend(id); NextRuntime.cancelReplies(); NextRuntime.applyCurrent(); close(); renderFriends(); ShikiAppShell.refresh(); }
+            if (action === 'delete-friend' && confirm('删除好友并停止自动发言？历史聊天和字卡会保留。')) { await NextModel.deleteFriend(id); NextRuntime.cancelReplies({ friendId: id }); NextRuntime.applyCurrent(); close(); renderFriends(); ShikiAppShell.refresh(); }
             if (action === 'save-group') {
                 const ids = Array.from(page.querySelectorAll('.next-member-choice input:checked')).map(n => n.value);
                 const name = page.querySelector('#next-group-name').value, groupId = page.dataset.id, avatarValue = formAvatar, version = avatarVersion;
@@ -353,15 +395,16 @@
                     try { await ConversationAvatarStore.save(c.id, await (await fetch(avatarValue)).blob()); await ConversationMetaStore.update(c.id, { avatarRef: 'next:' + Date.now() }); }
                     catch (error) { showNotification('群已保存，但头像保存失败，请从聊天详情重试', 'warning'); }
                 }
-                NextRuntime.cancelReplies(); await NextRuntime.sync(); NextRuntime.applyCurrent(); ShikiAppShell.refresh();
+                await NextRuntime.sync(); NextRuntime.applyCurrent(); ShikiAppShell.refresh();
                 if (version === avatarVersion) { close(); await NextRuntime.open(c.id); }
             }
             if (action === 'save-globals') {
                 const next = { myName: page.querySelector('#next-my-name').value.trim().slice(0, 40) || '我', myStatus: page.querySelector('#next-my-status').value.trim().slice(0, 200), myAvatar: formAvatar, colorTheme: page.querySelector('#next-theme').value, isDarkMode: page.querySelector('#next-dark').checked };
                 await NextRuntime.saveGlobals(next); NextRuntime.applyCurrent(); refreshProfiles(); close(); showNotification('已保存', 'success');
             }
-            if (action === 'export-conversation') { await NextRuntime.flush(); const backup = await NextBackup.exportConversation(id); downloadFileFallback(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), 'shiki-chat-' + id + '-' + Date.now() + '.json'); }
-            if (action === 'export-messages') { await NextRuntime.flush(); const backup = await NextBackup.exportMessages(id); downloadFileFallback(new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' }), 'shiki-messages-' + id + '-' + Date.now() + '.json'); }
+            if (action === 'export-conversation') await downloadBackup('conversation', id);
+            if (action === 'export-messages') await downloadBackup('messages', id);
+            if (action === 'export-volumes') await downloadMessageVolumes(id);
         });
     }
     function initialize() {
@@ -426,7 +469,8 @@
                 if (data.sessionId !== targetId) throw new Error('备份属于另一会话，已取消；不会按名称合并');
                 if (!confirm('将恢复此聊天的消息、草稿和会话设置。该聊天现有数据会被备份内容替换；其它会话不受影响。继续吗？')) return;
                 const restoreShared = confirm('是否同时恢复好友资料快照（备注、字卡及回复偏好）？选择“确定”会影响所有引用这些好友的单聊和群聊；选择“取消”则仅恢复当前聊天数据。');
-                await NextRuntime.flush(); NextRuntime.cancelReplies();
+                await NextRuntime.flush(); NextRuntime.cancelReplies({ sessionId: targetId });
+                NextMessageStore.discard(targetId);
                 await NextBackup.importConversation(data, targetId, restoreShared);
                 if (!await loadData()) throw new Error('导入已写入，但聊天重新读取失败；请重试刷新当前聊天');
                 NextRuntime.applyCurrent(); renderMessages(); close();
@@ -464,8 +508,9 @@
     async function deleteConversation(id) {
         if (!confirm('删除此聊天及其消息？好友与字卡仍保留。请先导出需要保留的聊天。')) return;
         await guarded(null, async () => {
-            await NextRuntime.flush(); NextRuntime.cancelReplies();
+            await NextRuntime.flush(); NextRuntime.cancelReplies({ sessionId: id });
             await NextModel.deleteConversation(id);
+            NextMessageStore.discard(id);
             const keys = await localforage.keys();
             for (const key of keys) if (key.startsWith(APP_PREFIX + id + '_')) await localforage.removeItem(key);
             await ConversationMetaStore.remove(id);

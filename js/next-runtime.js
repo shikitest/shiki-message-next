@@ -9,14 +9,27 @@
     let globalSettings = {};
     let draftTimer = null;
     const replyTimers = new Set();
+    const taskScopes = new Map(), contexts = new Map(), userRounds = new Map(), readRounds = new Map(), autoConfigs = new Map();
+    const AUTO_MEDIANS = Object.freeze({ low: 420, normal: 120, high: 45 });
+    const AUTO_TICK_MS = 10000, FREEZE_GAP_MS = 90000;
+    let autoTimer = null, lastTick = Date.now(), booted = false, loadingSession = false;
+    let lifecycleEpoch = 0;
+    const sessionEpochs = new Map(), friendEpochs = new Map();
     const typingFriends = new Map();
     function refreshTyping() {
         const wrapper = document.getElementById && document.getElementById('typing-indicator-wrapper');
         if (!wrapper) return;
         const label = document.getElementById('typing-indicator-label');
-        if (label) label.textContent = [...typingFriends.values()].join('、') + ' 正在输入';
-        wrapper.style.display = typingFriends.size ? 'block' : 'none';
-        if (typingFriends.size && typeof positionTypingIndicator === 'function') positionTypingIndicator();
+        const names = [...typingFriends.values()].filter(value => value.sessionId === String(SESSION_ID)).map(value => value.name);
+        if (label) label.textContent = names.join('、') + ' 正在输入';
+        const visible = names.length && document.body.classList.contains('shiki-chat-view-active');
+        const inner = wrapper.querySelector && wrapper.querySelector('.typing-indicator');
+        if (visible) { if (inner) inner.classList.remove('hiding'); wrapper.style.display = 'block'; }
+        else if (wrapper.style.display !== 'none') {
+            if (inner) inner.classList.add('hiding');
+            setTimeout(() => { if (![...typingFriends.values()].some(v => v.sessionId === String(SESSION_ID))) wrapper.style.display = 'none'; }, 240);
+        }
+        if (visible && typeof positionTypingIndicator === 'function') positionTypingIndicator();
     }
     let switchGeneration = 0, requestedId = null, transition = null;
     const scrollPositions = new Map();
@@ -27,8 +40,8 @@
     let cardEditor = null;
     let cardSave = Promise.resolve();
     function sessions() {
-        return NextModel.snapshot().conversations.map(c => {
-            const friend = c.type === 'direct' ? NextModel.friend(c.friendIds[0]) : null;
+        return NextModel.conversations().map(c => {
+            const friend = c.type === 'direct' ? NextModel.profile(c.friendIds[0]) : null;
             return { ...c, name: friend ? (friend.remark || friend.name || c.name) : c.name };
         });
     }
@@ -42,17 +55,18 @@
     }
     function applyCurrent() {
         PROFILE_FIELDS.forEach(key => { if (Object.prototype.hasOwnProperty.call(globalSettings, key)) settings[key] = globalSettings[key]; });
-        settings.autoSendEnabled = false;
         partnerPersonas = [];
         const c = NextModel.conversation(SESSION_ID);
         const all = c ? NextModel.members(c.id) : [];
-        settings.autoSendEnabled = false;
         groupChatSettings = { enabled: c && c.type === 'group', showAvatar: true, showName: true, members: all.map(f => ({ id: f.id, name: f.remark || f.name, avatar: f.avatar, deleted: f.deleted })) };
         _activeGroupSessionId = null;
         _activeGroupSessionScoped = false;
         settings.partnerName = c ? (c.type === 'group' ? c.name : (all[0].remark || all[0].name) + (all[0].deleted ? '（已删除）' : '')) : '请选择好友';
         settings.partnerStatus = c && c.type === 'direct' && global.NextMood ? NextMood.status(all[0].id) : '';
-        customReplies = c && c.type === 'direct' && all[0] ? all[0].cards.slice() : [];
+        // Calendar/profile refreshes can arrive while the legacy card editor is
+        // open. Never replace that fixed owner's working array with a group's
+        // empty projection (which would subsequently be saved over the owner).
+        if (!cardEditor || cardEditor.sessionId !== String(SESSION_ID)) customReplies = c && c.type === 'direct' && all[0] ? all[0].cards.slice() : [];
         if (DOMElements.partner && DOMElements.partner.avatar) {
             DOMElements.partner.avatar.replaceChildren();
             const f = c && c.type === 'direct' ? all[0] : null;
@@ -60,6 +74,8 @@
             else { const icon = document.createElement('i'); icon.className = 'fas fa-user'; DOMElements.partner.avatar.appendChild(icon); }
         }
         updateUI();
+        captureContext(String(SESSION_ID));
+        refreshTyping();
         const input = document.getElementById('message-input');
         if (input) input.placeholder = 'Aa';
         const continueButton = document.getElementById('continue-btn');
@@ -91,6 +107,8 @@
         if (id && input && NextModel.conversation(id)) await localforage.setItem(getSessionStorageKey(id, 'draft'), (draftValue === undefined ? input.value : draftValue).slice(0, 10000));
     }
     async function boot() {
+        if (booted) return;
+        booted = true;
         globalSettings = await localforage.getItem(GLOBAL_KEY) || {};
         if (!Object.keys(globalSettings).length) {
             globalSettings = {
@@ -109,18 +127,41 @@
             input.value = await localforage.getItem(getSessionStorageKey(SESSION_ID, 'draft')) || '';
             input.addEventListener('input', () => { clearTimeout(draftTimer); draftTimer = setTimeout(() => saveDraft().catch(report), 200); });
         }
-        global.addEventListener('pagehide', () => { cancelReplies(); saveDraft().catch(report); });
-        document.addEventListener('visibilitychange', () => { if (document.hidden) cancelReplies(); });
+        global.addEventListener('pagehide', () => { cancelReplies(); stopAutoLoop(); saveDraft().catch(report); });
+        global.addEventListener('pageshow', () => { lastTick = Date.now(); startAutoLoop(); });
+        document.addEventListener('freeze', () => { cancelReplies(); stopAutoLoop(); });
+        document.addEventListener('resume', () => { lastTick = Date.now(); startAutoLoop(); });
+        // Hidden is not frozen: keep valid scoped work while the browser executes it.
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && document.body.classList.contains('shiki-chat-view-active') && global.ShikiAppShell) ShikiAppShell.showChat();
+            refreshTyping();
+        });
+        for (const c of sessions()) {
+            const saved = await localforage.getItem(getSessionStorageKey(c.id, 'chatSettings'));
+            configureAuto(c.id, saved || {});
+        }
+        startAutoLoop();
     }
     function report(error) { console.warn('[Next]', error); showNotification('操作失败：' + String(error.message || error).slice(0, 100), 'error'); }
-    function cancelReplies() {
-        typingFriends.clear();
-        replyTimers.forEach(clearTimeout); replyTimers.clear();
-        userReplyTimers.forEach(clearTimeout); userReplyTimers.clear();
+    function cancelReplies(scope) {
+        if (!scope) lifecycleEpoch++;
+        else if (!scope.source && scope.sessionId) sessionEpochs.set(scope.sessionId, (sessionEpochs.get(scope.sessionId) || 0) + 1);
+        else if (!scope.source && scope.friendId) friendEpochs.set(scope.friendId, (friendEpochs.get(scope.friendId) || 0) + 1);
+        for (const [timer, owner] of taskScopes) {
+            if (scope && scope.sessionId && owner.sessionId !== scope.sessionId) continue;
+            if (scope && scope.friendId && owner.friendId !== scope.friendId) continue;
+            if (scope && scope.source && owner.source !== scope.source) continue;
+            clearTimeout(timer); replyTimers.delete(timer); taskScopes.delete(timer);
+        }
+        for (const [key, value] of typingFriends) {
+            if (!scope || ((!scope.sessionId || value.sessionId === scope.sessionId) && (!scope.friendId || value.friendId === scope.friendId) && (!scope.source || value.source === scope.source))) typingFriends.delete(key);
+        }
+        if (!scope) { userRounds.clear(); readRounds.clear(); userReplyTimers.forEach(clearTimeout); userReplyTimers.clear(); }
+        else if (scope.sessionId && !scope.source) { userRounds.delete(scope.sessionId); readRounds.delete(scope.sessionId); }
         if (global._pendingReplyTimer) clearTimeout(global._pendingReplyTimer);
         global._pendingReplyTimer = null;
         const typing = document.getElementById && document.getElementById('typing-indicator-wrapper');
-        if (typing) typing.style.display = 'none';
+        if (typing) refreshTyping();
     }
     async function flush() {
         const id = String(SESSION_ID || ''), version = switchGeneration;
@@ -166,10 +207,12 @@
         const withBackground = document.body.classList.contains && document.body.classList.contains('with-background');
         if (container && NextModel.conversation(originalId)) scrollPositions.set(originalId, { top: container.scrollTop, count: displayedMessageCount });
         document.body.classList.add('next-switching');
-        cancelReplies();
+        loadingSession = true;
         if (global.NextInput) NextInput.close();
         try {
             await flush();
+            contexts.delete(originalId);
+            if (typeof _sessionSavedAux !== 'undefined') _sessionSavedAux.delete(originalId);
             for (;;) {
                 const id = requestedId, version = switchGeneration;
                 if (String(SESSION_ID) !== id) {
@@ -188,6 +231,8 @@
                 const draft = await localforage.getItem(getSessionStorageKey(id, 'draft')) || '';
                 if (version !== switchGeneration) continue;
                 applyCurrent();
+                messages = NextMessageStore.merge(id, messages).map(m => ({ ...m, timestamp: new Date(m.timestamp) }));
+                NextMessageStore.adopt(id, messages);
                 const prior = scrollPositions.get(id);
                 displayedMessageCount = prior ? prior.count : HISTORY_BATCH_SIZE;
                 DOMElements.messageInput.value = draft;
@@ -196,9 +241,11 @@
                 history.replaceState(null, '', '#' + encodeURIComponent(id));
                 NextStorage.local.setItem(APP_PREFIX + 'lastSessionId', id);
                 ShikiAppShell.showChat();
+                loadingSession = false; refreshTyping();
                 return;
             }
         } catch (error) {
+            loadingSession = false;
             SESSION_ID = originalId; settings = original.settings; messages = original.messages;
             customReplies = original.customReplies; savedBackgrounds = original.savedBackgrounds; groupChatSettings = original.groupChatSettings;
             restoreExtras.forEach(restore => restore());
@@ -212,9 +259,9 @@
             throw error;
         }
     }
-    function replyPreferences(f) {
+    function replyPreferences(f, source = settings) {
         const scoped = {};
-        conversationReplyKeys.forEach(key => { if (Object.prototype.hasOwnProperty.call(settings, key)) scoped[key] = settings[key]; });
+        conversationReplyKeys.forEach(key => { if (Object.prototype.hasOwnProperty.call(source, key)) scoped[key] = source[key]; });
         return { ...originalReplyDefaults, ...scoped };
     }
     async function beginCardEditor(friendId) {
@@ -252,90 +299,179 @@
         return cardSave;
     }
     function endCardEditor() { cardEditor = null; }
-    function userSent() {
-        const id = String(SESSION_ID), version = switchGeneration;
-        userReplyTimers.forEach(clearTimeout); userReplyTimers.clear();
-        const readTimer = setTimeout(() => {
-            userReplyTimers.delete(readTimer);
-            if (id !== String(SESSION_ID) || version !== switchGeneration) return;
-            messages.forEach(m => { if (m.sender === 'user') m.status = 'read'; });
-            _updateReadReceiptsDOM(); throttledSaveData();
-        }, 1500 + Math.random() * 2500);
-        userReplyTimers.add(readTimer);
-        for (const f of NextModel.members(id)) {
-            if (f.deleted) continue;
-            const p = replyPreferences(f);
-            // Keep the legacy read/no-reply rule; preview-only replyProbability
-            // is retained in stored data for compatibility but never gates replies.
-            if (p.allowReadNoReply && Math.random() < p.readNoReplyChance) continue;
-            const timer = setTimeout(() => {
-                userReplyTimers.delete(timer);
-                if (id === String(SESSION_ID) && version === switchGeneration && !document.hidden) reply({ friendId: f.id, probabilityChecked: true });
-            }, p.replyDelayMin + Math.random() * (p.replyDelayMax - p.replyDelayMin));
-            userReplyTimers.add(timer);
-        }
+    function live(id) { return String(SESSION_ID) === id && !loadingSession; }
+    function captureContext(id) {
+        const value = { sessionId: id, prefs: { ...settings },
+            emojis: typeof customEmojis === 'undefined' ? [] : customEmojis.slice(),
+            stickers: typeof stickerLibrary === 'undefined' ? [] : stickerLibrary.slice(),
+            pokes: typeof customPokes === 'undefined' ? [] : customPokes.slice(),
+            pokeGroups: (global.customPokeGroups || []).slice(),
+            recent: messages.filter(m => m.sender === 'user' && m.text).slice(-10), friendIds: NextModel.conversation(id)?.friendIds.slice() || [] };
+        if (live(id)) contexts.set(id, value); return value;
     }
-    function reply(trigger) {
-        const id = String(SESSION_ID || ''); const c = NextModel.conversation(id);
-        if (!c || (trigger && trigger.source === 'rolling-scheduler')) return;
-        const version = switchGeneration;
+    async function contextFor(id) {
+        if (live(id)) return captureContext(id);
+        const keys = ['chatSettings', 'customEmojis', 'stickerLibrary', 'customPokes', 'customPokeGroups'];
+        const values = await Promise.all(keys.map(key => localforage.getItem(getSessionStorageKey(id, key))));
+        // No message history/media is preloaded for idle conversations.
+        const prefs = { ...originalReplyDefaults, ...values[0] };
+        let recent = contexts.get(id)?.recent || [];
+        if (prefs.replyEnabled && !recent.length) recent = (await localforage.getItem(getSessionStorageKey(id, 'chatMessages')) || []).filter(m => m.sender === 'user' && m.text).slice(-10);
+        const value = { sessionId: id, prefs, emojis: values[1] || [], stickers: values[2] || [], pokes: values[3] || [], pokeGroups: values[4] || [], recent, friendIds: NextModel.conversation(id)?.friendIds.slice() || [] };
+        if (live(id)) contexts.set(id, value); return value;
+    }
+    function schedule(callback, delay, scope) {
+        const due = Date.now() + Math.max(0, delay);
+        const timer = setTimeout(() => {
+            replyTimers.delete(timer); taskScopes.delete(timer);
+            if (Date.now() - due > FREEZE_GAP_MS) { cancelReplies(scope); return; }
+            try { Promise.resolve(callback()).catch(report); } catch (error) { report(error); }
+        }, Math.max(0, delay));
+        replyTimers.add(timer); taskScopes.set(timer, scope); return timer;
+    }
+    async function deliver(id, message, sound = 'message', context) {
+        if (!NextModel.conversation(id)) return;
+        if (message.friendId) {
+            const f = NextModel.profile(message.friendId);
+            if (!f || f.deleted || !NextModel.conversation(id).friendIds.includes(f.id)) return;
+        }
+        message.conversationId = id;
+        if (live(id)) addMessage(message);
+        else {
+            if (!await NextMessageStore.append(id, message)) return;
+            let projected = false;
+            if (live(id) && !messages.some(m => String(m.id) === String(message.id))) { addMessage(message); projected = true; }
+            if (live(id)) NextMessageStore.adopt(id, messages);
+            if (!projected && global.ShikiAppShell) await ShikiAppShell.noteMessageSaved(message, id);
+        }
+        if (live(id) && document.body.classList.contains('shiki-chat-view-active')) playSound(sound);
+        const sender = message.friendId && NextModel.profile(message.friendId);
+        if (!(context || contexts.get(id))?.prefs.muted && typeof global._sendPartnerNotification === 'function') global._sendPartnerNotification(message.sender, message.text || '[表情]', { sessionId: id, avatar: sender && sender.avatar });
+    }
+    function userSent() {
+        const id = String(SESSION_ID), context = captureContext(id), prefs = replyPreferences(null, context.prefs);
+        const prior = userRounds.get(id);
+        if (prior) { clearTimeout(prior); replyTimers.delete(prior); taskScopes.delete(prior); }
+        const previousRead = readRounds.get(id);
+        if (previousRead) { clearTimeout(previousRead); replyTimers.delete(previousRead); taskScopes.delete(previousRead); }
+        const readTimer = schedule(async () => {
+            readRounds.delete(id);
+            if (!NextModel.conversation(id)) return;
+            if (live(id)) { messages.forEach(m => { if (m.sender === 'user') m.status = 'read'; }); _updateReadReceiptsDOM(); throttledSaveData(); }
+            else { await NextMessageStore.markRead(id); if (live(id)) { messages.forEach(m => { if (m.sender === 'user') m.status = 'read'; }); _updateReadReceiptsDOM(); } }
+        }, 1500 + Math.random() * 2500, { sessionId: id });
+        readRounds.set(id, readTimer);
+        // Debounce only the not-yet-started round of this conversation. Other
+        // conversations and already-started rounds keep their own tasks.
+        const timer = schedule(() => {
+            userRounds.delete(id);
+            if (!NextModel.conversation(id)) return;
+            for (const f of NextModel.identities(id)) {
+                if (f.deleted || !context.friendIds.includes(f.id)) continue;
+                if (prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) continue;
+                schedule(() => reply({ sessionId: id, friendId: f.id, context, probabilityChecked: true }), Math.random() * (prefs.replyDelayMax - prefs.replyDelayMin), { sessionId: id, friendId: f.id });
+            }
+        }, prefs.replyDelayMin, { sessionId: id });
+        userRounds.set(id, timer);
+    }
+    function deferReply(milliseconds) {
+        const id = String(SESSION_ID), context = captureContext(id);
+        return schedule(() => reply({ sessionId: id, context }), milliseconds, { sessionId: id });
+    }
+    function reply(trigger = {}) {
+        const id = String(trigger.sessionId || SESSION_ID || ''), c = NextModel.conversation(id);
+        if (!c) return;
+        const context = trigger.context || (live(id) ? captureContext(id) : null);
+        if (!context) { const epoch = lifecycleEpoch, version = sessionEpochs.get(id); contextFor(id).then(value => { if (epoch === lifecycleEpoch && version === sessionEpochs.get(id)) reply({ ...trigger, sessionId: id, context: value }); }).catch(report); return; }
         for (const f of NextModel.members(id)) {
-            const prefs = replyPreferences(f);
+            const prefs = replyPreferences(f, context.prefs);
+            if (context.friendIds && !context.friendIds.includes(f.id)) continue;
             if (f.deleted || (trigger && trigger.friendId && trigger.friendId !== f.id)) continue;
             if (!(trigger && trigger.probabilityChecked) && prefs.allowReadNoReply && Math.random() < prefs.readNoReplyChance) continue;
-            const valid = () => String(SESSION_ID) === id && switchGeneration === version && !document.hidden && NextModel.friend(f.id) && !NextModel.friend(f.id).deleted && NextModel.conversation(id) && NextModel.conversation(id).friendIds.includes(f.id);
-            if (Math.random() < 0.03 && valid() && typeof global._triggerPartnerPoke === 'function') global._triggerPartnerPoke({ id: f.id, name: f.name, avatar: f.avatar });
+            const scope = { sessionId: id, friendId: f.id, source: trigger.source || 'reply' };
+            const epoch = lifecycleEpoch, sessionEpoch = sessionEpochs.get(id), friendEpoch = friendEpochs.get(f.id);
+            const valid = () => { const identity = NextModel.profile(f.id), conversation = NextModel.conversation(id); return epoch === lifecycleEpoch && sessionEpoch === sessionEpochs.get(id) && friendEpoch === friendEpochs.get(f.id) && (!trigger.source || trigger.source !== 'auto' || autoConfigs.get(id)?.enabled) && identity && !identity.deleted && conversation && conversation.friendIds.includes(f.id); };
+            if (Math.random() < 0.03 && valid() && typeof global._triggerPartnerPoke === 'function') global._triggerPartnerPoke({ id: f.id, name: f.remark || f.name, avatar: f.avatar }, { pokes: context.pokes, groups: context.pokeGroups, emit: message => deliver(id, { ...message, friendId: f.id }, 'partner_poke', context).catch(report) });
             if (Math.random() < 0.01 && global.PhotoAlbum && typeof PhotoAlbum.generateRandomPhotoForOwner === 'function') {
-                PhotoAlbum.generateRandomPhotoForOwner({ ownerType: 'partner', ownerId: f.id, ownerName: f.name, source: 'random' }).then(photo => {
-                    if (photo && photo.image && valid()) addMessage({ id: crypto.randomUUID(), sender: f.name, friendId: f.id, groupMemberId: c.type === 'group' ? f.id : null, image: photo.image, text: '', timestamp: new Date(), type: 'normal', status: 'received' });
+                PhotoAlbum.generateRandomPhotoForOwner({ ownerType: 'partner', ownerId: f.id, ownerName: f.name, source: 'random', conversationId: id }).then(photo => {
+                    if (photo && photo.image && valid()) return deliver(id, { id: crypto.randomUUID(), sender: f.name, friendId: f.id, groupMemberId: c.type === 'group' ? f.id : null, image: photo.image, text: '', timestamp: new Date(), type: 'normal', status: 'received' }, 'message', context);
                 }).catch(report);
             }
-            if (prefs.textGenerationMode === 'card' && !f.cards.length) continue;
+            const enabledCards = friend => {
+                const disabled = new Set(friend.disabledCards || []);
+                (friend.cardGroups || []).forEach(group => { if (group.disabled) group.items.forEach(card => disabled.add(card)); });
+                return friend.cards.filter(card => !disabled.has(card));
+            };
+            if (prefs.textGenerationMode === 'card' && !enabledCards(f).length) continue;
             const count = Math.random() < 0.75 ? 1 : (Math.random() < 0.95 ? 2 : 3);
-            if (prefs.typingIndicatorEnabled) { typingFriends.set(f.id, f.name); refreshTyping(); }
+            const typingKey = id + ':' + f.id + ':' + crypto.randomUUID();
+            if (prefs.typingIndicatorEnabled) { typingFriends.set(typingKey, { ...scope, name: f.remark || f.name }); refreshTyping(); }
             let delay = 0;
             for (let i = 0; i < count; i++) {
                 delay += prefs.replyDelayMin + Math.random() * (prefs.replyDelayMax - prefs.replyDelayMin);
-                const timer = setTimeout(() => {
-                replyTimers.delete(timer);
-                if (i === count - 1) { typingFriends.delete(f.id); refreshTyping(); }
+                schedule(async () => {
+                if (i === count - 1) { typingFriends.delete(typingKey); refreshTyping(); }
                 const current = NextModel.friend(f.id); const conversation = NextModel.conversation(id);
                 if (!valid() || !current || !conversation) return;
-                const disabled = new Set(current.disabledCards || []);
-                (current.cardGroups || []).forEach(group => { if (group.disabled) group.items.forEach(card => disabled.add(card)); });
-                const choice = chooseReplyText(current.cards.filter(card => !disabled.has(card)), prefs);
+                const choice = chooseReplyText(enabledCards(current), prefs);
                 if (!choice.text) return;
                 let finalText = choice.text, separateEmoji = null;
-                if (typeof customEmojis !== 'undefined' && customEmojis.length && Math.random() < 0.2) {
-                    const emoji = customEmojis[Math.floor(Math.random() * customEmojis.length)];
-                    if (settings.emojiMixEnabled !== false) finalText = Math.random() < 0.5 ? emoji + ' ' + finalText : finalText + ' ' + emoji;
+                if (context.emojis.length && Math.random() < 0.2) {
+                    const emoji = context.emojis[Math.floor(Math.random() * context.emojis.length)];
+                    if (context.prefs.emojiMixEnabled !== false) finalText = Math.random() < 0.5 ? emoji + ' ' + finalText : finalText + ' ' + emoji;
                     else separateEmoji = emoji;
                 }
                 const message = { id: crypto.randomUUID(), sender: current.remark || current.name, friendId: current.id,
                     groupMemberId: c.type === 'group' ? current.id : null, text: finalText,
                     timestamp: new Date(), status: 'received', type: 'normal', favorited: false, note: null };
                 if (prefs.replyEnabled && i === 0) {
-                    const recent = messages.filter(m => m.sender === 'user').slice(-10);
+                    const recent = context.recent;
                     if (recent.length && Math.random() < 0.3) {
                         const quoted = recent[Math.floor(Math.random() * recent.length)];
                         message.replyTo = { id: quoted.id, text: quoted.text, sender: quoted.sender };
                     }
                 }
-                addMessage(message); playSound('message');
-                if (typeof global._sendPartnerNotification === 'function') global._sendPartnerNotification(current.name, finalText);
+                await deliver(id, message, 'message', context);
                 const delayedExtra = (payload, milliseconds) => {
-                    const extra = setTimeout(() => { replyTimers.delete(extra); if (valid()) { addMessage({ ...message, ...payload, id: crypto.randomUUID(), timestamp: new Date() }); playSound('message'); } }, milliseconds);
-                    replyTimers.add(extra);
+                    schedule(() => { if (valid()) return deliver(id, { ...message, ...payload, replyTo: null, id: crypto.randomUUID(), timestamp: new Date() }, 'message', context); }, milliseconds, scope);
                 };
                 let disabledStickers = new Set();
                 try { disabledStickers = new Set(JSON.parse(NextStorage.local.getItem('disabledStickerItems') || '[]')); } catch (_) {}
-                const enabledStickers = (typeof stickerLibrary === 'undefined' ? [] : stickerLibrary).filter(s => !disabledStickers.has(s));
+                const enabledStickers = context.stickers.filter(s => !disabledStickers.has(s));
                 if (enabledStickers.length && Math.random() < 0.2) delayedExtra({ text: '', image: enabledStickers[Math.floor(Math.random() * enabledStickers.length)], imageKind: 'sticker' }, 400 + Math.random() * 600);
                 if (separateEmoji) delayedExtra({ text: separateEmoji }, 300 + Math.random() * 400);
-            }, delay);
-            replyTimers.add(timer);
+            }, delay, scope);
             }
         }
     }
-    global.NextRuntime = Object.freeze({ GLOBAL_KEY, GLOBAL_FIELDS, boot, sync, sessions, applyCurrent, applyOuterAppearance, saveGlobals, flush, open, reply, userSent, replyPreferences, beginCardEditor, saveEditorCards, endCardEditor, cardEditorOwnerId, editorDisabledCards, setEditorDisabledCards, cancelReplies, report, generation: () => switchGeneration, globals: () => ({ ...globalSettings }) });
+    function configureAuto(id, value) {
+        if (!NextModel.conversation(id)) return;
+        const enabled = value.autoSendEnabled === true;
+        autoConfigs.set(id, { enabled, frequency: Object.hasOwn(AUTO_MEDIANS, value.autoSendFrequency) ? value.autoSendFrequency : 'normal' });
+        if (!enabled) cancelReplies({ sessionId: id, source: 'auto' });
+        if (live(id) && contexts.has(id)) contexts.get(id).prefs = { ...settings };
+    }
+    function autoChance(frequency, seconds = 60) { return 1 - Math.pow(0.5, seconds / (60 * AUTO_MEDIANS[frequency])); }
+    function autoTick(now = Date.now()) {
+        const elapsed = now - lastTick; lastTick = now;
+        if (elapsed > FREEZE_GAP_MS || elapsed < 0) { cancelReplies(); return; }
+        for (const [id, config] of autoConfigs) {
+            if (!NextModel.conversation(id)) { autoConfigs.delete(id); continue; }
+            if (!config.enabled) continue;
+            for (const f of NextModel.identities(id)) {
+                if (f.deleted || Math.random() >= autoChance(config.frequency, Math.max(0, elapsed) / 1000)) continue;
+                // The callback is a reaction delay, never a pre-generated schedule
+                // of future spontaneous messages.
+                const epoch = lifecycleEpoch, version = sessionEpochs.get(id);
+                contextFor(id).then(context => { if (epoch === lifecycleEpoch && version === sessionEpochs.get(id) && autoConfigs.get(id)?.enabled) reply({ sessionId: id, friendId: f.id, context, source: 'auto' }); }).catch(report);
+            }
+        }
+    }
+    function startAutoLoop() {
+        if (autoTimer) return;
+        lastTick = Date.now();
+        autoTimer = setInterval(() => autoTick(), AUTO_TICK_MS);
+    }
+    function stopAutoLoop() { clearInterval(autoTimer); autoTimer = null; }
+    global.NextRuntime = Object.freeze({ GLOBAL_KEY, GLOBAL_FIELDS, boot, sync, sessions, applyCurrent, applyOuterAppearance, saveGlobals, flush, open, reply, userSent, deferReply, replyPreferences, configureAuto, autoChance, autoTick, AUTO_MEDIANS, beginCardEditor, saveEditorCards, endCardEditor, cardEditorOwnerId, editorDisabledCards, setEditorDisabledCards, cancelReplies, report, generation: () => switchGeneration, globals: () => ({ ...globalSettings }) });
 })(window);

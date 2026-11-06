@@ -74,7 +74,17 @@
     function friend(id) { return copy(state.friends.find(f => f.id === id) || null); }
     function conversation(id) { return copy(state.conversations.find(c => c.id === id) || null); }
     function members(id) { const c = conversation(id); return c ? c.friendIds.map(friend).filter(Boolean) : []; }
-    global.NextModel = Object.freeze({ key: KEY, load, validate, preferences, snapshot: () => copy(state), friend, conversation, members,
+    function profile(id) {
+        const f = state.friends.find(f => f.id === id);
+        return f ? { id: f.id, name: f.name, remark: f.remark, avatar: f.avatar, deleted: f.deleted } : null;
+    }
+    function identities(id) { const c = state.conversations.find(c => c.id === id); return c ? c.friendIds.map(profile).filter(Boolean) : []; }
+    function exportFriend(id) {
+        const f = state.friends.find(f => f.id === id); if (!f) return null;
+        return { ...f, cards: f.cards.slice(), disabledCards: f.disabledCards.slice(), cardGroups: f.cardGroups.map(g => ({ ...g, items: g.items.slice() })), replySettings: { ...f.replySettings } };
+    }
+    function exportSnapshot() { return { version: state.version, conversations: copy(state.conversations), friends: state.friends.map(f => exportFriend(f.id)) }; }
+    global.NextModel = Object.freeze({ key: KEY, load, validate, preferences, snapshot: () => copy(state), exportFriend, exportSnapshot, conversations: () => copy(state.conversations), profile, identities, friend, conversation, members,
         flush: () => queue,
         replace: input => mutate(next => { const clean = validate(input); Object.assign(next, clean); return clean; }),
         saveFriend: input => mutate(next => {

@@ -11,7 +11,7 @@ async function main() {
     let tid = 0, readGate = null, failSave = false, failLoad = false;
     const input = { value: '', addEventListener() {} }, classes = new Set();
     const ctx = { console, Date, Event, crypto: { randomUUID }, Math: Object.create(Math),
-        document: { hidden: false, addEventListener() {}, getElementById: id => id === 'message-input' ? input : null, body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c) } } },
+        document: { hidden: false, documentElement: { dataset: {}, style: { getPropertyValue() { return ''; }, setProperty() {} } }, addEventListener() {}, getElementById: id => id === 'message-input' ? input : null, body: { classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle: (c, enabled) => enabled ? classes.add(c) : classes.delete(c) } } },
         addEventListener() {}, dispatchEvent() {}, setTimeout: (fn, delay) => { const id = ++tid; timers.set(id, { fn, delay }); return id; }, clearTimeout: id => timers.delete(id),
         APP_PREFIX: 'SHIKI_NEXT_', SESSION_ID: 'next-home', settings: {}, sessionList: [], messages: [], customReplies: [], savedBackgrounds: [], groupChatSettings: {}, partnerPersonas: [],
         currentReplyTo: null, batchMessages: [], isBatchMode: false, isLoadingHistory: false, displayedMessageCount: 20, HISTORY_BATCH_SIZE: 20, _activeGroupSessionId: null, _activeGroupSessionScoped: false,
@@ -31,7 +31,7 @@ async function main() {
     const core = source('core.js');
     vm.runInContext(core.slice(core.indexOf('function getDefaultSettings()'), core.indexOf('function renderBackgroundGallery()')), ctx);
     vm.runInContext(core.slice(core.indexOf('function normalizeTextGenerationMode('), core.indexOf('window.chooseReplyText =')), ctx);
-    for (const file of ['next-model.js', 'next-runtime.js', 'next-mood.js']) vm.runInContext(source(file), ctx);
+    for (const file of ['next-model.js', 'next-message-store.js', 'next-runtime.js', 'next-mood.js']) vm.runInContext(source(file), ctx);
     const a = await ctx.NextModel.saveFriend({ name: 'A', cards: ['A CARD'], replyProbability: 0.23 });
     const b = await ctx.NextModel.saveFriend({ name: 'B', cards: ['B CARD'] });
     const da = await ctx.NextModel.openDirect(a.id), db = await ctx.NextModel.openDirect(b.id), group = await ctx.NextModel.createGroup('G', [a.id, b.id]);
@@ -49,7 +49,8 @@ async function main() {
     assert.equal(probabilities.replyDelayMin, 3000); assert.equal(probabilities.replyDelayMax, 7000);
     assert.equal(probabilities.readNoReplyChance, 0.2); assert.equal(probabilities.allowReadNoReply, false);
     ctx.settings.replyDelayMin = 9999;
-    assert.equal(ctx.NextRuntime.replyPreferences(b).replyDelayMin, 3000, 'current conversation cannot leak preferences into another friend');
+    assert.equal(ctx.NextRuntime.replyPreferences(b).replyDelayMin, 9999, 'members use the current conversation preference, not a friend-level duplicate');
+    ctx.settings.replyDelayMin = 3000;
     assert.equal(ctx.NextModel.friend(a.id).replyProbability, 0.23, 'saved preview value preserved but not enabled');
     const cases = [{ draws: [.99,.99,.1,0], count: 1 }, { draws: [.99,.99,.8,.9,0,0], count: 2 }, { draws: [.99,.99,.8,.99,0,0,0], count: 3 }];
     ctx.SESSION_ID = da.id;
@@ -75,7 +76,8 @@ async function main() {
     assert.equal(ctx.SESSION_ID, group.id); assert.equal(input.value, 'G DRAFT');
     assert.deepEqual(rendered, [group.id], 'only final target becomes visible');
     assert.equal(data.get(ctx.getSessionStorageKey(da.id, 'draft')), 'A DRAFT');
-    assert.equal(ctx.settings.myStatus, '在休息'); assert.equal(ctx.settings.colorTheme, 'black-white');
+    assert.equal(ctx.settings.myStatus, '在休息'); assert.equal(ctx.settings.colorTheme, 'gold', 'chat retains its own default theme');
+    assert.equal(ctx.NextRuntime.globals().colorTheme, 'black-white', 'outer theme stays global');
     await ctx.NextRuntime.open(da.id); assert.equal(input.value, 'A DRAFT');
     failLoad = true; const oldMessages = ctx.messages; await assert.rejects(ctx.NextRuntime.open(db.id));
     assert.equal(ctx.SESSION_ID, da.id); assert.equal(ctx.messages, oldMessages); assert.equal(input.value, 'A DRAFT'); assert.equal(classes.has('next-switching'), false);

@@ -1231,6 +1231,36 @@ function initComboMenu() {
     });
 
     comboBtn.dataset.initialized = 'true';
+    const views = new Map();
+    let currentGrid = null, gridFrame = null;
+    function mountGrid(kind, sources, create) {
+        let cached = views.get(kind);
+        if (!cached || cached.sources.length !== sources.length || cached.sources.some((src, i) => src !== sources[i])) {
+            const grid = document.createElement('div'); grid.className = 'sticker-grid-view';
+            cached = { sources: sources.slice(), grid, count: 0, create }; views.set(kind, cached);
+        }
+        currentGrid = cached;
+        const append = () => {
+            const fragment = document.createDocumentFragment();
+            const end = Math.min(cached.count + 42, cached.sources.length);
+            for (; cached.count < end; cached.count++) fragment.append(cached.create(cached.sources[cached.count], cached.count));
+            cached.grid.append(fragment);
+        };
+        cached.append = append;
+        if (!cached.count) append();
+        contentArea.replaceChildren(cached.grid);
+    }
+    contentArea.addEventListener('scroll', () => {
+        if (gridFrame !== null) return;
+        gridFrame = requestAnimationFrame(() => {
+            gridFrame = null;
+            if (currentGrid && contentArea.scrollHeight - contentArea.scrollTop - contentArea.clientHeight < 150) currentGrid.append();
+        });
+    }, { passive: true });
+    const requestReply = () => {
+        if (window.NextRuntime) NextRuntime.userSent();
+        else setTimeout(simulateReply, settings.replyDelayMin + Math.random() * (settings.replyDelayMax - settings.replyDelayMin));
+    };
 
     document.addEventListener('click', (e) => {
         if (!picker.contains(e.target) && !comboBtn.contains(e.target)) {
@@ -1270,7 +1300,7 @@ function initComboMenu() {
     function makeStickerItem(src, onClick) {
         const item = document.createElement('div');
         item.className = 'sticker-grid-item';
-        item.innerHTML = `<img src="${src}" loading="lazy">`;
+        const image = document.createElement('img'); image.src = src; image.loading = 'lazy'; image.decoding = 'async'; item.append(image);
         item.onclick = (e) => { e.stopPropagation(); onClick(); };
         return item;
     }
@@ -1279,14 +1309,14 @@ function initComboMenu() {
         const item = document.createElement('div');
         item.className = 'sticker-grid-item';
         item.style.position = 'relative';
-        item.innerHTML = `<img src="${src}" loading="lazy"><div class="sticker-delete-btn" title="删除"><i class="fas fa-times"></i></div>`;
+        const image = document.createElement('img'); image.src = src; image.loading = 'lazy'; image.decoding = 'async'; item.append(image);
+        const remove = document.createElement('div'); remove.className = 'sticker-delete-btn'; remove.title = '删除'; remove.innerHTML = '<i class="fas fa-times"></i>'; item.append(remove);
         item.querySelector('img').onclick = (e) => { e.stopPropagation(); onClick(); };
         item.querySelector('.sticker-delete-btn').onclick = (e) => { e.stopPropagation(); onDelete(); };
         return item;
     }
 
     function renderMyStickerLibrary() {
-        contentArea.innerHTML = '';
         if (!myStickerLibrary || myStickerLibrary.length === 0) {
             contentArea.innerHTML = `
                 <div class="empty-sticker-tip">
@@ -1297,28 +1327,23 @@ function initComboMenu() {
             `;
             return;
         }
-        const grid = document.createElement('div');
-        grid.className = 'sticker-grid-view';
-        myStickerLibrary.forEach((src, idx) => {
+        mountGrid('mine', myStickerLibrary, (src, idx) => {
             const item = makeDeletableStickerItem(src, () => {
                 addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, imageKind: 'sticker', status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
+                requestReply();
             }, () => {
                 myStickerLibrary.splice(idx, 1);
                 localforage.setItem(getStorageKey('myStickerLibrary'), myStickerLibrary);
                 showNotification('✓ 已删除', 'success');
                 renderMyStickerLibrary();
             });
-            grid.appendChild(item);
+            return item;
         });
-        contentArea.appendChild(grid);
     }
 
     function renderPartnerStickerLibrary() {
-        contentArea.innerHTML = '';
         if (!stickerLibrary || stickerLibrary.length === 0) {
             contentArea.innerHTML = `
                 <div class="empty-sticker-tip">
@@ -1329,23 +1354,20 @@ function initComboMenu() {
             `;
             return;
         }
-        const grid = document.createElement('div');
-        grid.className = 'sticker-grid-view';
-        stickerLibrary.forEach(src => {
+        mountGrid('partner', stickerLibrary, src => {
             const item = makeStickerItem(src, () => {
                 addMessage({ id: Date.now(), sender: 'user', text: '', timestamp: new Date(), image: src, imageKind: 'sticker', status: 'sent', type: 'normal' });
                 playSound('send');
                 picker.classList.remove('active');
-                const delayRange = settings.replyDelayMax - settings.replyDelayMin;
-                setTimeout(simulateReply, settings.replyDelayMin + Math.random() * delayRange);
+                requestReply();
             });
-            grid.appendChild(item);
+            return item;
         });
-        contentArea.appendChild(grid);
     }
 
     function renderStickerLibrary() { renderMyStickerLibrary(); }
     function renderUserPokeMenu() {
+        currentGrid = null;
         contentArea.innerHTML = '';
 
         const wrapper = document.createElement('div');
@@ -1391,7 +1413,7 @@ function initComboMenu() {
                 });
                 picker.classList.remove('active');
 
-                setTimeout(simulateReply, 1500);
+                if (window.NextRuntime) NextRuntime.deferReply(1500); else setTimeout(simulateReply, 1500);
             };
             wrapper.appendChild(item);
         });

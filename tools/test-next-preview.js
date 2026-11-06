@@ -17,11 +17,12 @@ function storage() {
 function environment() {
     const records = new Map(); let failKey = null;
     const timers = new Map(); let timerId = 0;
-    const ctx = { console, Event, crypto: { randomUUID }, localStorage: storage(), sessionStorage: storage(),
+    const ctx = { console, Event, TextEncoder, Blob, crypto: { randomUUID }, localStorage: storage(), sessionStorage: storage(),
         dispatchEvent() {}, addEventListener() {},
         setTimeout(fn) { const id = ++timerId; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); },
         NextModel: null, APP_PREFIX: 'SHIKI_NEXT_', SESSION_ID: '', settings: {}, messages: [],
-        Math: Object.create(Math), document: { hidden: false },
+        Math: Object.create(Math), document: { hidden: false, getElementById() { return null; }, body: { classList: { contains() { return true; } } } },
+        showNotification() {}, getSessionStorageKey: (id, key) => 'SHIKI_NEXT_' + id + '_' + key,
         addMessage: msg => ctx.sent.push(msg), playSound() {}, sent: [],
         localforage: {
             async getItem(k) { return records.has(k) ? structuredClone(records.get(k)) : null; },
@@ -33,7 +34,8 @@ function environment() {
     const core = fs.readFileSync(path.join(root, 'js/core.js'), 'utf8');
     vm.runInContext(core.slice(core.indexOf('function getDefaultSettings()'), core.indexOf('function renderBackgroundGallery()')), ctx);
     vm.runInContext(core.slice(core.indexOf('function normalizeTextGenerationMode('), core.indexOf('window.chooseReplyText =')), ctx);
-    for (const file of ['next-storage.js', 'next-model.js', 'next-runtime.js', 'next-backup.js']) vm.runInContext(fs.readFileSync(path.join(root, 'js', file), 'utf8'), ctx, { filename: file });
+    vm.runInContext(core.slice(core.indexOf('const _sessionSaveQueues'), core.indexOf('const saveData =')), ctx);
+    for (const file of ['next-storage.js', 'next-model.js', 'next-message-store.js', 'next-runtime.js', 'next-backup.js']) vm.runInContext(fs.readFileSync(path.join(root, 'js', file), 'utf8'), ctx, { filename: file });
     return { ctx, records, timers, fail: k => { failKey = k; } };
 }
 (async () => {
@@ -68,17 +70,21 @@ function environment() {
     assert.deepEqual(normalize(ctx.sent), oldMessages);
     ctx.SESSION_ID = directs[0].id; ctx.NextRuntime.reply({});
     ctx.SESSION_ID = directB.id; for (const fn of [...timers.values()]) fn(); timers.clear();
+    await ctx.enqueueSessionWrite(directs[0].id, async () => {});
     assert.equal(ctx.sent.length, 2, 'stale A tasks cannot write into B');
+    assert.ok(records.get(ctx.getSessionStorageKey(directs[0].id, 'chatMessages')).some(m => m.text === 'A NEW'), 'A task survives switching and persists into A');
     ctx.SESSION_ID = group.id; await ctx.NextModel.deleteFriend(a.id); ctx.NextRuntime.reply({});
     assert.equal(timers.size, 1, 'deleted friend stops replying'); ctx.NextRuntime.cancelReplies(); assert.equal(timers.size, 0);
     await ctx.NextModel.saveFriend({ id: a.id, name: 'A', cards: ['A NEW'], deleted: false, replyProbability: 0.5, replySettings: { allowReadNoReply: true, readNoReplyChance: 0.5 } });
     await ctx.NextModel.saveFriend({ id: b.id, name: 'B', cards: ['B ONLY'], replyProbability: 0.5, replySettings: { allowReadNoReply: true, readNoReplyChance: 0.5 } });
+    ctx.settings.allowReadNoReply = true; ctx.settings.readNoReplyChance = 0.5;
     const draws = [0.1, 0.9, 0.99, 0.99, 0.1, 0]; ctx.Math.random = () => draws.shift() ?? 0;
     ctx.NextRuntime.reply({}); assert.equal(timers.size, 1, 'separate Bernoulli draw for each member'); ctx.NextRuntime.cancelReplies();
     await ctx.localforage.setItem('SHIKI_NEXT_globalSettingsV1', { myName: 'Me', isDarkMode: true, colorTheme: 'black-white', fontSize: 18 });
     await ctx.localforage.setItem('SHIKI_NEXT_' + group.id + '_chatMessages', ctx.sent);
     await ctx.localforage.setItem('SHIKI_NEXT_' + directB.id + '_draft', 'B draft');
     await ctx.localforage.setItem('SHIKI_NEXT_friend:' + a.id + ':moodCalendar', { '2026-09-26': { partner: 'happy', partnerNote: 'calendar source' } });
+    ctx.setTimeout = setTimeout;
     const exported = await ctx.NextBackup.exportData();
     assert.equal(exported.model.friends[0].avatar, null);
     await ctx.NextBackup.importData(exported);

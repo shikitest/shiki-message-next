@@ -199,7 +199,7 @@ if (target.classList.contains('delete-btn')) {
                 DOMElements.pokeModal.input.value = '';
                 const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                 const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                setTimeout(simulateReply, randomDelay);
+                if (window.NextRuntime) NextRuntime.deferReply(randomDelay); else setTimeout(simulateReply, randomDelay);
             });
 
 
@@ -2649,7 +2649,7 @@ playlist.style.top = (rect.top + (player.classList.contains('collapsed') ? 65 : 
                             updateReplyPreview();
                             const delayRange = settings.replyDelayMax - settings.replyDelayMin;
                             const randomDelay = settings.replyDelayMin + Math.random() * delayRange;
-                            setTimeout(simulateReply, randomDelay);
+                            if (window.NextRuntime) NextRuntime.deferReply(randomDelay); else setTimeout(simulateReply, randomDelay);
 
 
                             closeModal();

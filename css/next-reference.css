@@ -96,6 +96,14 @@ body.shiki-chat-view-active { --message-sent-bg: var(--next-ref-bubble); --messa
 .shiki-chat-subtitle { font-size: 10px; line-height: 1.2; }
 .shiki-chat-view-active #chat-container { padding: 12px 10px calc(var(--next-compose-height) + var(--next-keyboard-lift) + 14px); scroll-behavior: auto; }
 .shiki-chat-view-active .message-wrapper { max-width: 88%; margin-bottom: 11px; gap: 7px; opacity: 1; animation: none; }
+.shiki-chat-view-active .message-wrapper.next-message-arrival { animation: messageAppear .25s ease-out both; }
+.next-unread-badge { min-width:18px; padding:1px 5px; border-radius:12px; background:#16874b; color:white; font-size:11px; text-align:center; }
+#next-new-message-hint { position:fixed; right:16px; bottom:calc(var(--next-compose-height, 60px) + 14px); z-index:60; border:1px solid #ddd; border-radius:18px; padding:8px 14px; background:#fff; color:#333; }
+.next-export-overlay { position:fixed; inset:0; z-index:100010; display:grid; place-items:center; padding:24px; background:rgba(0,0,0,.32); }
+.next-export-card { width:min(100%,390px); padding:24px; border-radius:14px; background:#fff; color:#222; font-family:var(--next-ui-font); }
+.next-export-card button, .next-export-card a { display:inline-block; margin:8px 12px 0 0; padding:9px 14px; border:1px solid #ddd; border-radius:8px; color:#333; background:#fff; font:inherit; }
+body:not(.shiki-chat-view-active) #next-new-message-hint { display:none; }
+@media(prefers-reduced-motion:reduce) { .shiki-chat-view-active .message-wrapper.next-message-arrival { animation:none; } }
 .shiki-chat-view-active .message-wrapper.sent > .message-avatar { display: none; }
 .shiki-chat-view-active .message-content-wrapper { position: relative; max-width: 100%; }
 .shiki-chat-view-active .message { padding: 8px 12px; min-width: 34px; border-radius: 18px; overflow: visible; line-height: 1.45; box-shadow: none; }
@@ -109,6 +117,7 @@ body.shiki-chat-view-active { --message-sent-bg: var(--next-ref-bubble); --messa
 .shiki-chat-view-active .timestamp { text-shadow: none; font-weight: 400; }
 .shiki-chat-view-active .message-image { max-width: min(58vw, 250px) !important; max-height: 330px; object-fit: contain; }
 .shiki-chat-view-active .message-image.message-sticker { max-width: min(32vw, 120px) !important; max-height: 120px; width: auto; height: auto; }
+.shiki-chat-view-active .message-image.message-sticker { width:120px; height:120px; object-fit:contain; }
 .shiki-chat-view-active .date-divider { justify-content: center; margin: 14px 0; font: 400 11px/1.4 var(--next-ui-font); background: none; }
 .shiki-chat-view-active .date-divider::before, .shiki-chat-view-active .date-divider::after { display: none; }
 .shiki-chat-view-active .date-divider span, .shiki-chat-view-active .system-message { background: rgba(49,78,107,.23); color: #fff; border-radius: 16px; box-shadow: none; padding: 4px 10px; }

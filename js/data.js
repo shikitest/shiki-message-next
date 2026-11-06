@@ -496,7 +496,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-window._sendPartnerNotification = function(title, body) {
+window._sendPartnerNotification = function(title, body, identity) {
     try {
         if (NextStorage.local.getItem('notifEnabled') !== '1') return Promise.resolve(false);
         if (!('Notification' in window)) return Promise.resolve(false);
@@ -504,9 +504,9 @@ window._sendPartnerNotification = function(title, body) {
         if (!document.hidden) return Promise.resolve(false);
         var options = {
             body: body || '对方发来了消息',
-            icon: (document.querySelector('#partner-avatar img') || {}).src || 'assets/app-icon-192.png',
+            icon: identity ? identity.avatar || 'assets/app-icon-192.png' : (document.querySelector('#partner-avatar img') || {}).src || 'assets/app-icon-192.png',
             badge: 'assets/app-icon-192.png',
-            tag: 'partner-msg',
+            tag: identity ? 'partner-msg-' + identity.sessionId : 'partner-msg',
             renotify: true
         };
         if (window.BackgroundSupport && typeof window.BackgroundSupport.showNotification === 'function') {
